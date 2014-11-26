@@ -1,8 +1,7 @@
-#![feature(overloaded_calls)]
+//#![feature(overloaded_calls)]
+#![feature(unboxed_closures)]
 
 use std::fmt;
-
-//#![feature(overloaded_calls)]
 
 struct Mat {
     r: uint,
@@ -47,18 +46,40 @@ impl Mat {
         j * self.r + i
     }
 
-    fn atmut<'a>(&'a mut self, i: uint, j: uint) -> &'a mut f32 {
-        let i = self.ind(i, j);
-        self.data.index_mut(&i)
-    }
-
     fn at(&self, i: uint, j: uint) -> f32 {
         self.data[self.ind(i, j)]
+    }
+
+    fn at_mut<'a>(&'a mut self, i: uint, j: uint) -> &'a mut f32 {
+        let i = self.ind(i, j);
+        self.data.index_mut(&i)
     }
 
     fn set(&mut self, i: uint, j: uint, x: f32) {
         let i = self.ind(i, j);
         self.data[i] = x;
+    }
+
+    fn lu(&self) -> LU {
+        LU::of(self)
+    }
+
+    fn row_add(&mut self, src: uint, dst: uint, c: f32) {
+        for j in range(0, self.c) {
+            *self.at_mut(dst, j) += c * self.at(src, j);
+        }
+    }
+
+    fn col_add(&mut self, src: uint, dst: uint, c: f32) {
+        for i in range(0, self.r) {
+            *self.at_mut(i, dst) += c * self.at(i, src);
+        }
+    }
+}
+
+impl Clone for Mat {
+    fn clone(&self) -> Mat {
+        Mat{r: self.r, c: self.c, data: self.data.clone()}
     }
 }
 
@@ -122,7 +143,7 @@ impl Sub<Mat, Mat> for Mat {
             panic!("Size mismatch in Sub: ({}, {}) vs ({}, {})",
                    self.r, self.c, rhs.r, rhs.c);
         }
-        
+
         Mat{r: self.r, c: self.c,
             data: Vec::from_fn(self.data.len(),
                                |i| self.data[i] - rhs.data[i])}
@@ -149,7 +170,80 @@ impl Mul<Mat, Mat> for Mat {
     }
 }
 
+struct LU {
+    // TODO: Store in a single mat
+    L: Mat,
+    U: Mat,
+}
+
+impl LU {
+    pub fn of(A: &Mat) -> LU {
+        if A.r != A.c {
+            panic!("Cannot take LU of a non-square matrix");
+        }
+        let mut L = Mat::ident(A.r);
+        let mut U = A.clone();
+
+        // Reduce from row i, using pivot at (i, i)
+        for i in range(0, A.c - 1) {
+            if U(i, i) == 0.0 {
+                panic!("TODO: entry is zero.  implement pivoting in LU");
+            }
+
+            // Reduces row j (from row i)
+            for j in range(i + 1, A.r) {
+                let x = U(j, i) / U(i, i);
+                /*for c in range(i, A.c) {
+                    let val = U(j, c) - x * U(i, c);
+                    U.set(j, c, val);
+                }*/
+                U.row_add(i, j, -x);
+                L.col_add(j, i, x);
+
+                // Applies the inverse to L
+                
+            }
+        }
+
+        LU{L: L, U: U}
+    }
+
+    pub fn solve(&self, b: &Vec<f32>) -> Vec<f32> {
+        if self.L.r != b.len() {
+            panic!("Vec has wrong length for LU solving");
+        }
+
+        let mut x = Vec::from_elem(b.len(), 0.0);
+
+        // Propagate through L-inverse
+        //
+        // x := L^-1 * b
+        // x(i) := b(i) - x(0)*L(i,0) - x(1)*L(i,1) - ... - x(i-1)*L(i,i-1)
+        for i in range(0, b.len()) {
+            x[i] = b[i];
+            for j in range(0, i) {
+                x[i] -= x[j] * self.L.at(i, j);
+            }
+        }
+
+        // Propagate through U-inverse
+        //
+        // x' := U^-1 * x
+        // x'(i) := 1/U(i,i) * (x(i) - x'(i+1)*U(i,i+1) - x'(i+2)*U(i,i+2) - ...)
+        for i in range(0, x.len()).rev() {
+            x[i] = x[i];
+            for j in range(i + 1, x.len()) {
+                x[i] -= x[j] * self.U.at(i, j);
+            }
+            x[i] = x[i] / self.U.at(i, i);
+        }
+
+        x
+    }
+}
+
 fn main() {
+    /*
     println!("Hello!");
 
     let mut a = Mat::zero(2, 2);
@@ -175,38 +269,39 @@ fn main() {
 
     let c = a + b;
     println!("c = \n{}", c);
+     */
 }
 
 #[test]
 fn test_add() {
-    let a = Mat::from_slice(2, 2, [1.0, 2.0, 3.0, 4.0]);
-    let b = Mat::from_slice(2, 2, [5.0, 6.0, 7.0, 8.0]);
+    let a = Mat::from_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+    let b = Mat::from_slice(2, 2, &[5.0, 6.0, 7.0, 8.0]);
     let c = a + b;
 
-    if c(0, 0) != 6.0 { panic!(); }
-    if c(0, 1) != 8.0 { panic!(); }
-    if c(1, 0) != 10.0 { panic!(); }
-    if c(1, 1) != 12.0 { panic!(); }
+    assert_eq!(c(0, 0), 6.0);
+    assert_eq!(c(0, 1), 8.0);
+    assert_eq!(c(1, 0), 10.0);
+    assert_eq!(c(1, 1), 12.0);
 }
 
 #[test]
 #[should_fail]
 fn test_add_mismatched_dimensions () {
-    let a = Mat::from_slice(2, 1, [1.0, 2.0]);
-    let b = Mat::from_slice(2, 2, [5.0, 6.0, 7.0, 8.0]);
+    let a = Mat::from_slice(2, 1, &[1.0, 2.0]);
+    let b = Mat::from_slice(2, 2, &[5.0, 6.0, 7.0, 8.0]);
     let c = a + b;
 }
 
 #[test]
 fn test_subtract() {
-    let a = Mat::from_slice(2, 2, [5.0, 6.0, 7.0, 8.0]);
-    let b = Mat::from_slice(2, 2, [2.0, 4.0, 6.0, 8.0]);
+    let a = Mat::from_slice(2, 2, &[5.0, 6.0, 7.0, 8.0]);
+    let b = Mat::from_slice(2, 2, &[2.0, 4.0, 6.0, 8.0]);
     let c = a - b;
 
-    if c(0, 0) != 3.0 { panic!(); }
-    if c(0, 1) != 2.0 { panic!(); }
-    if c(1, 0) != 1.0 { panic!(); }
-    if c(1, 1) != 0.0 { panic!(); }
+    assert_eq!(c(0, 0), 3.0);
+    assert_eq!(c(0, 1), 2.0);
+    assert_eq!(c(1, 0), 1.0);
+    assert_eq!(c(1, 1), 0.0);
 }
 
 #[test]
@@ -215,25 +310,78 @@ fn test_mul_ident() {
     let i2 = Mat::ident(2);
 
     let x = i1 * i2;
-    if x(0, 0) != 1.0 { panic!(); }
-    if x(0, 1) != 0.0 { panic!(); }
-    if x(1, 0) != 0.0 { panic!(); }
-    if x(1, 1) != 1.0 { panic!(); }
+    assert_eq!(x(0, 0), 1.0);
+    assert_eq!(x(0, 1), 0.0);
+    assert_eq!(x(1, 0), 0.0);
+    assert_eq!(x(1, 1), 1.0);
 }
 
 #[test]
 fn test_mul_simple() {
-    let a = Mat::from_slice(2, 3, [1.0, 2.0, 3.0,
-                                   4.0, 5.0, 6.0]);
-    let b = Mat::from_slice(3, 4, [2.0, 4.0, 6.0, 8.0,
-                                   10.0, 12.0, 14.0, 16.0,
-                                   18.0, 20.0, 22.0, 24.0]);
+    let a = Mat::from_slice(2, 3, &[1.0, 2.0, 3.0,
+                                    4.0, 5.0, 6.0]);
+    let b = Mat::from_slice(3, 4, &[2.0, 4.0, 6.0, 8.0,
+                                    10.0, 12.0, 14.0, 16.0,
+                                    18.0, 20.0, 22.0, 24.0]);
     let c = a * b;
-    
-    let expect = Mat::from_slice(2, 4, [76.0, 88.0, 100.0, 112.0,
-                                        166.0, 196.0, 226.0, 256.0]);
 
-    println!("c = \n{}", c);
-    println!("expect = \n{}", expect);
-    if c != expect { panic!(); }
+    let expect = Mat::from_slice(2, 4, &[76.0, 88.0, 100.0, 112.0,
+                                         166.0, 196.0, 226.0, 256.0]);
+
+    assert_eq!(c, expect);
+}
+
+#[test]
+fn test_solve_2x2_ident() {
+    // Ax = b
+    let A = Mat::ident(2);
+    let b : Vec<f32> = vec!{1.0, 2.0};
+
+    let lu = A.lu();
+    let x = lu.solve(&b);
+
+    assert_eq!(x[0], b[0]);
+    assert_eq!(x[1], b[1]);
+}
+
+#[test]
+fn test_solve_2x2_upper() {
+    // Ax = b
+    let A = Mat::from_slice(2, 2, &[1.0, 2.0, 0.0, 1.0]);
+    let b : Vec<f32> = vec!{1.0, 2.0};
+
+    let lu = A.lu();
+    let x = lu.solve(&b);
+
+    assert_eq!(x[0], -3.0);
+    assert_eq!(x[1], 2.0);
+}
+
+#[test]
+fn test_solve_2x2_lower() {
+    // Ax = b
+    let A = Mat::from_slice(2, 2, &[1.0, 0.0, 2.0, 1.0]);
+    let b : Vec<f32> = vec!{1.0, 2.0};
+
+    let lu = A.lu();
+    let x = lu.solve(&b);
+
+    assert_eq!(x[0], 1.0);
+    assert_eq!(x[1], 0.0);
+}
+
+#[test]
+fn test_solve_3x3_simple() {
+    let A = Mat::from_slice(3, 3, &[1.0, -2.0, 3.0,
+                                    2.0, -5.0, 12.0,
+                                    0.0, 2.0, -10.0]);
+    let b = vec!{3.0, 2.0, 1.0};
+
+    let lu = A.lu();
+    let x = lu.solve(&b);
+    println!("L = \n{}\nU = \n{}", lu.L, lu.U);
+
+    assert_eq!(x[0], -20.5);
+    assert_eq!(x[1], -17.0);
+    assert_eq!(x[2], -3.5);
 }
