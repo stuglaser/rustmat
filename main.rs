@@ -376,7 +376,7 @@ impl LU {
             for j in range(i + 1, A.r) {
                 let x = U(j, i) / U(i, i);
                 U.row_add(i, j, -x);
-                L.col_add(j, i, x);  // TODO: Only one entry is created
+                L.set(j, i, x);
             }
 
             println!("After rref {}:\nP = {}\nL = \n{}\nU = \n{}", i, P, L, U);
