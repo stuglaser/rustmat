@@ -2,8 +2,63 @@
 #![feature(unboxed_closures)]
 #![allow(non_snake_case)]
 #![allow(dead_code)]  // TODO: Remove eventually
+#![feature(macro_rules)]
 
 use std::fmt;
+use std::ptr;
+use std::num::Float;
+
+macro_rules! assert_near(
+    ($given:expr, $expected:expr, $eps:expr) => {
+        match (&($given), &($expected), &($eps)) {
+            (given_val, expected_val, eps_val) => {
+                if num::abs(*given_val - *expected_val) > eps_val {
+                    panic!("assertion failed: abs(a - b) < eps, with {} and {}",
+                           given_val, expected_val);
+                }
+            }
+        }
+    }
+)
+
+macro_rules! assert_vec_near(
+    ($a_expr:expr, $b_expr:expr, $eps_expr:expr) => {
+        match (&($a_expr), &($b_expr), &($eps_expr)) {
+            (a, b, eps) => {
+                if a.len() != b.len() {
+                    panic!("Vec sizes don't match: {} vs {}", a.len(), b.len());
+                }
+                for i in range(0, a.len()) {
+                    if (a[i] - b[i]).abs() > *eps {
+                        panic!("Vec's aren't equal: {} and {}", a, b);
+                    }
+                }
+            }
+        }
+    }
+)
+    
+macro_rules! assert_mat_near(
+    ($A_expr:expr, $B_expr:expr, $eps_expr:expr) => {
+        match (&($A_expr), &($B_expr), &($eps_expr)) {
+            (A, B, eps) => {
+                if A.r != B.r || A.c != B.c {
+                    panic!("Matrix sizes don't match: ({}, {}) vs ({}, {})",
+                           A.r, A.c, B.r, B.c);
+                }
+                for i in range(0, A.r) {
+                    for j in range(0, A.c) {
+                        let x : f32 = A.at(i, j) - B.at(i, j);
+                        if x.abs() > *eps {
+                            panic!("Matrices aren't equal: \n{} and \n{}", A, B);
+                        }
+                    }
+                }
+            }
+        }
+    }
+)
+    
 
 struct Mat {
     r: uint,
@@ -75,6 +130,14 @@ impl Mat {
     fn col_add(&mut self, src: uint, dst: uint, c: f32) {
         for i in range(0, self.r) {
             *self.at_mut(i, dst) += c * self.at(i, src);
+        }
+    }
+
+    fn swap_row(&mut self, a: uint, b: uint) {
+        for j in range(0, self.c) {
+            unsafe {
+                ptr::swap(self.at_mut(a, j), self.at_mut(b, j));
+            }
         }
     }
 }
@@ -210,6 +273,20 @@ impl Permutation {
         }
         m
     }
+
+    fn inv(&self) -> Permutation {
+        let mut v = Vec::from_elem(self.v.len(), 0);
+        for (a, b) in self.v.iter().enumerate() {
+            v[*b] = a;
+        }
+        Permutation{v: v}
+    }
+}
+
+impl fmt::Show for Permutation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.v.fmt(f)
+    }
 }
 
 impl Index<uint, uint> for Permutation {
@@ -233,17 +310,37 @@ impl Mul<Mat, Mat> for Permutation {
         let mut m = Mat::zero(rhs.r, rhs.c);  // TODO: slow
         for i in range(0, rhs.r) {
             for j in range(0, rhs.c) {
-                *m.at_mut(i, j) = rhs.at(i, j);
+                *m.at_mut(i, j) = rhs.at(self[i], j);
             }
         }
         m
     }
 }
 
-struct LU {
+/*
+impl<T:Clone> Mul<Vec<T>, Vec<T>> for Permutation {
+    fn mul(&self, rhs: &Vec<T>) -> Vec<T> {
+        if self.len() != rhs.len() {
+            panic!("Permutation len doesn't match Vec len");
+        }
+        Vec::from_fn(rhs.len(), |i| rhs[self[i]].clone())
+    }
+}*/
+
+impl Mul<Vec<f32>, Vec<f32>> for Permutation {
+    fn mul(&self, rhs: &Vec<f32>) -> Vec<f32> {
+        if self.len() != rhs.len() {
+            panic!("Permutation len doesn't match Vec len");
+        }
+        Vec::from_fn(rhs.len(), |i| rhs[self[i]].clone())
+    }
+}
+
+struct LU {  // P * A = L * U
     // TODO: Store in a single mat
     L: Mat,
     U: Mat,
+    P: Permutation,
 }
 
 impl LU {
@@ -258,9 +355,8 @@ impl LU {
         // Reduce from row i, using pivot at (i, i)
         for i in range(0, A.c - 1) {
             if U(i, i) == 0.0 {
-                panic!("TODO: entry is zero.  implement pivoting in LU");
                 // Finds a non-zero entry
-                let mut nonzero = i;
+                let mut nonzero = 0u;
                 for j in range(i + 1, U.r) {
                     if U(j, i) != 0.0 {  // TODO: near, rather than equals
                         nonzero = j;
@@ -268,11 +364,12 @@ impl LU {
                     }
                 }
 
-                if nonzero == i {
+                if nonzero == 0 {
                     panic!("Matrix is non-invertable.  Cannot take LU");
                 }
 
-                
+                P.swap_left(i, nonzero);
+                U.swap_row(i, nonzero);
             }
 
             // Reduces row j (from row i)
@@ -281,9 +378,11 @@ impl LU {
                 U.row_add(i, j, -x);
                 L.col_add(j, i, x);  // TODO: Only one entry is created
             }
+
+            println!("After rref {}:\nP = {}\nL = \n{}\nU = \n{}", i, P, L, U);
         }
 
-        LU{L: L, U: U}
+        LU{L: L, U: U, P: P}
     }
 
     pub fn solve(&self, b: &Vec<f32>) -> Vec<f32> {
@@ -297,8 +396,8 @@ impl LU {
         //
         // x := L^-1 * b
         // x(i) := b(i) - x(0)*L(i,0) - x(1)*L(i,1) - ... - x(i-1)*L(i,i-1)
-        for i in range(0, b.len()) {
-            x[i] = b[i];
+        for i in range(0, x.len()) {
+            x[i] = b[self.P[i]];
             for j in range(0, i) {
                 x[i] -= x[j] * self.L.at(i, j);
             }
@@ -317,6 +416,10 @@ impl LU {
         }
 
         x
+    }
+
+    pub fn resolve(&self) -> Mat {
+        self.P.inv() * (self.L * self.U)
     }
 }
 
@@ -411,6 +514,33 @@ fn test_mul_simple() {
 }
 
 #[test]
+fn test_lu_3x3() {
+    let A = Mat::from_slice(3, 3, &[1.0, -2.0, 3.0,
+                                    2.0, -5.0, 12.0,
+                                    -4.0, 2.0, -10.0]);
+    let lu = A.lu();
+    assert_mat_near!(lu.resolve(), A, 0.001);
+}
+
+#[test]
+fn test_lu_2x2_perm() {
+    let A = Mat::from_slice(
+        2, 2,
+        &[0.0, 1.0,
+          -1.0, 0.0]);
+
+    let lu = A.lu();
+
+    println!("Result of LU:\nP = {}\nL = \n{}\nU = \n{}\n", lu.P, lu.L, lu.U);
+    let LU = lu.L * lu.U;
+    println!("L * U = \n{}", LU);
+
+    println!("P = {}\nP^-1 = {}", lu.P, lu.P.inv());
+    
+    assert_mat_near!(lu.resolve(), A, 0.001);
+}
+
+#[test]
 fn test_solve_2x2_ident() {
     // Ax = b
     let A = Mat::ident(2);
@@ -492,7 +622,40 @@ fn test_perm_swaps() {
 }
 
 #[test]
-fn test_2x2_perm_simple() {
+fn test_perm_vec() {
+    let mut p = Permutation::ident(3);
+    p.swap_left(1, 2);
+    p.swap_left(0, 1);
+
+    let a : Vec<f32> = vec!{1.0, 2.0, 3.0};
+    let b : Vec<f32> = vec!{3.0, 1.0, 2.0};
+    assert_vec_near!(p * a, b, 0.00001);
+}
+
+#[test]
+fn test_perm_mat() {
+    let A = Mat::from_slice(
+        3, 3,
+        &[1.0, 2.0, 3.0,
+          4.0, 5.0, 6.0,
+          7.0, 8.0, 9.0]);
+    
+    let mut p = Permutation::ident(3);
+    p.swap_left(0, 1);
+    p.swap_left(1, 2);
+
+    let B = p * A;
+    let expect = Mat::from_slice(
+        3, 3,
+        &[4.0, 5.0, 6.0,
+          7.0, 8.0, 9.0,
+          1.0, 2.0, 3.0]);
+    
+    assert_mat_near!(B, expect, 0.00001);
+}
+
+#[test]
+fn test_2x2_solve_perm_simple() {
     let A = Mat::from_slice(
         2, 2,
         &[0.0, 1.0,
