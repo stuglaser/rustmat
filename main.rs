@@ -317,7 +317,6 @@ impl Mul<Mat, Mat> for Permutation {
     }
 }
 
-/*
 impl<T:Clone> Mul<Vec<T>, Vec<T>> for Permutation {
     fn mul(&self, rhs: &Vec<T>) -> Vec<T> {
         if self.len() != rhs.len() {
@@ -325,16 +324,8 @@ impl<T:Clone> Mul<Vec<T>, Vec<T>> for Permutation {
         }
         Vec::from_fn(rhs.len(), |i| rhs[self[i]].clone())
     }
-}*/
-
-impl Mul<Vec<f32>, Vec<f32>> for Permutation {
-    fn mul(&self, rhs: &Vec<f32>) -> Vec<f32> {
-        if self.len() != rhs.len() {
-            panic!("Permutation len doesn't match Vec len");
-        }
-        Vec::from_fn(rhs.len(), |i| rhs[self[i]].clone())
-    }
 }
+
 
 struct LU {  // P * A = L * U
     // TODO: Store in a single mat
