@@ -1,5 +1,7 @@
 //#![feature(overloaded_calls)]
 #![feature(unboxed_closures)]
+#![allow(non_snake_case)]
+#![allow(dead_code)]  // TODO: Remove eventually
 
 use std::fmt;
 
@@ -170,6 +172,74 @@ impl Mul<Mat, Mat> for Mat {
     }
 }
 
+struct Permutation {
+    v: Vec<uint>,
+}
+
+impl Permutation {
+    fn ident(n: uint) -> Permutation {
+        let v = Vec::from_fn(n, |i| i);
+        Permutation{v: v}
+    }
+
+    fn swap(n: uint, i: uint, j: uint) -> Permutation {
+        let v = Vec::from_fn(
+            n,
+            |k|
+            if k == i { j }
+            else if k == j { i }
+            else { k });
+        Permutation{v: v}
+    }
+
+    fn len(&self) -> uint {
+        self.v.len()
+    }
+
+    // Equavalent to Permutation::swap(i, j) * self
+    fn swap_left(&mut self, i: uint, j: uint) {
+        let val = self.v[i];
+        self.v[i] = self.v[j];
+        self.v[j] = val;
+    }
+
+    fn to_mat(&self) -> Mat {
+        let mut m = Mat::zero(self.v.len(), self.v.len());
+        for (i, j) in self.v.iter().enumerate() {
+            m.set(i, *j, 1.0);
+        }
+        m
+    }
+}
+
+impl Index<uint, uint> for Permutation {
+    fn index<'a>(&'a self, _index: &uint) -> &'a uint {
+        self.v.index(_index)
+    }
+}
+
+impl Mul<Permutation, Permutation> for Permutation {
+    fn mul(&self, rhs: &Permutation) -> Permutation {
+        let v = Vec::from_fn(self.len(), |i| rhs[self[i]]);
+        Permutation{v: v}
+    }
+}
+
+impl Mul<Mat, Mat> for Permutation {
+    fn mul(&self, rhs: &Mat) -> Mat {
+        if self.v.len() != rhs.r {
+            panic!("Cannot permute matrix of mismatched size");
+        }
+        let mut m = Mat::zero(rhs.r, rhs.c);  // TODO: slow
+        for i in range(0, rhs.r) {
+            for j in range(0, rhs.c) {
+                *m.at_mut(i, j) = rhs.at(i, j);
+            }
+        }
+        m
+    }
+}
+
 struct LU {
     // TODO: Store in a single mat
     L: Mat,
@@ -183,25 +253,33 @@ impl LU {
         }
         let mut L = Mat::ident(A.r);
         let mut U = A.clone();
+        let mut P = Permutation::ident(A.r);
 
         // Reduce from row i, using pivot at (i, i)
         for i in range(0, A.c - 1) {
             if U(i, i) == 0.0 {
                 panic!("TODO: entry is zero.  implement pivoting in LU");
+                // Finds a non-zero entry
+                let mut nonzero = i;
+                for j in range(i + 1, U.r) {
+                    if U(j, i) != 0.0 {  // TODO: near, rather than equals
+                        nonzero = j;
+                        break
+                    }
+                }
+
+                if nonzero == i {
+                    panic!("Matrix is non-invertable.  Cannot take LU");
+                }
+
+                
             }
 
             // Reduces row j (from row i)
             for j in range(i + 1, A.r) {
                 let x = U(j, i) / U(i, i);
-                /*for c in range(i, A.c) {
-                    let val = U(j, c) - x * U(i, c);
-                    U.set(j, c, val);
-                }*/
                 U.row_add(i, j, -x);
-                L.col_add(j, i, x);
-
-                // Applies the inverse to L
-                
+                L.col_add(j, i, x);  // TODO: Only one entry is created
             }
         }
 
@@ -290,6 +368,7 @@ fn test_add_mismatched_dimensions () {
     let a = Mat::from_slice(2, 1, &[1.0, 2.0]);
     let b = Mat::from_slice(2, 2, &[5.0, 6.0, 7.0, 8.0]);
     let c = a + b;
+    drop(c);
 }
 
 #[test]
@@ -384,4 +463,45 @@ fn test_solve_3x3_simple() {
     assert_eq!(x[0], -20.5);
     assert_eq!(x[1], -17.0);
     assert_eq!(x[2], -3.5);
+}
+
+#[test]
+fn test_perm_identity() {
+    let p = Permutation::ident(3);
+    let m = p.to_mat();
+    for i in range(0, 3) {
+        for j in range(0, 3) {
+            if i == j {
+                assert_eq!(m(i, j), 1.0);
+            }
+            else {
+                assert_eq!(m(i, j), 0.0);
+            }
+        }
+    }
+}
+
+#[test]
+fn test_perm_swaps() {
+    let mut p = Permutation::ident(3);
+    p.swap_left(0, 1);
+    p.swap_left(1, 2);  // 0 goes into 2, 2 goes into 1
+    assert_eq!(p[0], 1);
+    assert_eq!(p[1], 2);
+    assert_eq!(p[2], 0);
+}
+
+#[test]
+fn test_2x2_perm_simple() {
+    let A = Mat::from_slice(
+        2, 2,
+        &[0.0, 1.0,
+          -1.0, 0.0]);
+
+    let b = vec!{2.0, -3.0};
+
+    let lu = A.lu();
+    let x = lu.solve(&b);
+    assert_eq!(x[0], 3.0);
+    assert_eq!(x[1], 2.0);
 }
