@@ -37,7 +37,7 @@ macro_rules! assert_vec_near(
         }
     }
 )
-    
+
 macro_rules! assert_mat_near(
     ($A_expr:expr, $B_expr:expr, $eps_expr:expr) => {
         match (&($A_expr), &($B_expr), &($eps_expr)) {
@@ -58,7 +58,12 @@ macro_rules! assert_mat_near(
         }
     }
 )
-    
+
+
+trait VecBase : Index<uint, f32> {
+    fn len(&self) -> uint;
+}
+
 
 struct Mat {
     r: uint,
@@ -117,6 +122,17 @@ impl Mat {
         self.data[i] = x;
     }
 
+    fn col(&self, j: uint) -> ColView {
+        if j >= self.c {
+            panic!("Column index out of bounds");
+        }
+        ColView{m: self, col: j}
+    }
+
+    fn is_square(&self) -> bool {
+        self.r == self.c
+    }
+
     fn lu(&self) -> LU {
         LU::of(self)
     }
@@ -165,6 +181,12 @@ impl<'a> FnMut<(uint, uint), &'a f32> for Mat {
     }
 }
 */
+
+impl Index<(uint, uint), f32> for Mat {
+    fn index(&self, &(i, j): &(uint, uint)) -> &f32 {
+        self.data.index(&self.ind(i, j))
+    }
+}
 
 
 impl fmt::Show for Mat {
@@ -232,6 +254,26 @@ impl Mul<Mat, Mat> for Mat {
         }
 
         Mat{r: self.r, c: rhs.c, data: data}
+    }
+}
+
+struct ColView<'a> {
+    m: &'a Mat,
+    col: uint
+}
+
+impl<'a> ColView<'a> {
+}
+
+impl<'a> VecBase for ColView<'a> {
+    fn len(&self) -> uint {
+        self.m.r
+    }
+}
+
+impl<'a> Index<uint, f32> for ColView<'a> {
+    fn index(&self, index: &uint) -> &f32 {
+        self.m.index(&(*index, self.col))
     }
 }
 
@@ -414,6 +456,27 @@ impl LU {
     }
 }
 
+struct QR {
+    // TODO: Store in a single mat
+    Q: Mat,
+    R: Mat,
+}
+
+impl QR {
+    pub fn of(A: &Mat) -> QR {
+        if !A.is_square() {
+            panic!("QR must apply to square matrix");
+        }
+        let R = A.clone();
+        let Q = Mat::ident(A.r);
+
+        let x = A.col(0);
+        //let v = ;
+
+        QR{Q: Q, R: R}
+    }
+}
+
 fn main() {
     /*
     println!("Hello!");
@@ -527,7 +590,7 @@ fn test_lu_2x2_perm() {
     println!("L * U = \n{}", LU);
 
     println!("P = {}\nP^-1 = {}", lu.P, lu.P.inv());
-    
+
     assert_mat_near!(lu.resolve(), A, 0.001);
 }
 
@@ -630,7 +693,7 @@ fn test_perm_mat() {
         &[1.0, 2.0, 3.0,
           4.0, 5.0, 6.0,
           7.0, 8.0, 9.0]);
-    
+
     let mut p = Permutation::ident(3);
     p.swap_left(0, 1);
     p.swap_left(1, 2);
@@ -641,7 +704,7 @@ fn test_perm_mat() {
         &[4.0, 5.0, 6.0,
           7.0, 8.0, 9.0,
           1.0, 2.0, 3.0]);
-    
+
     assert_mat_near!(B, expect, 0.00001);
 }
 
@@ -658,4 +721,20 @@ fn test_2x2_solve_perm_simple() {
     let x = lu.solve(&b);
     assert_eq!(x[0], 3.0);
     assert_eq!(x[1], 2.0);
+}
+
+#[test]
+fn test_col_view() {
+    let a = Mat::from_slice(
+        3, 4, &[2.0, 4.0, 6.0, 8.0,
+                10.0, 12.0, 14.0, 16.0,
+                18.0, 20.0, 22.0, 24.0]);
+
+    let c0 = a.col(0);
+    assert_eq!(c0[0], 2.0);
+    assert_eq!(c0[1], 10.0);
+
+    let c2 = a.col(2);
+    assert_eq!(c2[0], 6.0);
+    assert_eq!(c2[2], 22.0);
 }
