@@ -1,74 +1,17 @@
-//#![feature(overloaded_calls)]
-#![feature(unboxed_closures)]
-#![allow(non_snake_case)]
-#![allow(dead_code)]  // TODO: Remove eventually
-#![feature(macro_rules)]
-
 use std::fmt;
 use std::ptr;
-use std::num::Float;
 
-macro_rules! assert_near(
-    ($given:expr, $expected:expr, $eps:expr) => {
-        match (&($given), &($expected), &($eps)) {
-            (given_val, expected_val, eps_val) => {
-                if num::abs(*given_val - *expected_val) > eps_val {
-                    panic!("assertion failed: abs(a - b) < eps, with {} and {}",
-                           given_val, expected_val);
-                }
-            }
-        }
-    }
-)
+use lu::LU;
 
-macro_rules! assert_vec_near(
-    ($a_expr:expr, $b_expr:expr, $eps_expr:expr) => {
-        match (&($a_expr), &($b_expr), &($eps_expr)) {
-            (a, b, eps) => {
-                if a.len() != b.len() {
-                    panic!("Vec sizes don't match: {} vs {}", a.len(), b.len());
-                }
-                for i in range(0, a.len()) {
-                    if (a[i] - b[i]).abs() > *eps {
-                        panic!("Vec's aren't equal: {} and {}", a, b);
-                    }
-                }
-            }
-        }
-    }
-)
-
-macro_rules! assert_mat_near(
-    ($A_expr:expr, $B_expr:expr, $eps_expr:expr) => {
-        match (&($A_expr), &($B_expr), &($eps_expr)) {
-            (A, B, eps) => {
-                if A.r != B.r || A.c != B.c {
-                    panic!("Matrix sizes don't match: ({}, {}) vs ({}, {})",
-                           A.r, A.c, B.r, B.c);
-                }
-                for i in range(0, A.r) {
-                    for j in range(0, A.c) {
-                        let x : f32 = A.at(i, j) - B.at(i, j);
-                        if x.abs() > *eps {
-                            panic!("Matrices aren't equal: \n{} and \n{}", A, B);
-                        }
-                    }
-                }
-            }
-        }
-    }
-)
-
-
-trait VecBase : Index<uint, f32> {
+pub trait VecBase : Index<uint, f32> {
     fn len(&self) -> uint;
 }
 
 
-struct Mat {
-    r: uint,
-    c: uint,
-    data: Vec<f32>  // Column major
+pub struct Mat {
+    pub r: uint,
+    pub c: uint,
+    pub data: Vec<f32>  // Column major
 }
 
 fn _idx(r: uint, i: uint, j: uint) -> uint {
@@ -76,16 +19,16 @@ fn _idx(r: uint, i: uint, j: uint) -> uint {
 }
 
 impl Mat {
-    fn new() -> Mat {
+    pub fn new() -> Mat {
         Mat{r: 0, c: 0, data: Vec::new()}
     }
 
-    fn zero(r: uint, c: uint) -> Mat {
+    pub fn zero(r: uint, c: uint) -> Mat {
         let d = Vec::from_elem(r * c, 0.0);
         Mat{r: r, c: c, data: d}
     }
 
-    fn ident(n: uint) -> Mat {
+    pub fn ident(n: uint) -> Mat {
         let mut d = Vec::from_elem(n * n, 0.0);
         for i in range(0, n) {
             d[i * n + i] = 1.0;
@@ -93,7 +36,7 @@ impl Mat {
         Mat{r: n, c: n, data: d}
     }
 
-    fn from_slice(r: uint, c: uint, rowmajor: &[f32]) -> Mat {
+    pub fn from_slice(r: uint, c: uint, rowmajor: &[f32]) -> Mat {
         // Data must be converted from row-major
         let mut data = Vec::with_capacity(r * c);
         for j in range(0, c) {
@@ -104,52 +47,52 @@ impl Mat {
         Mat{r: r, c: c, data: data}
     }
 
-    fn ind(&self, i: uint, j: uint) -> uint {
+    pub fn ind(&self, i: uint, j: uint) -> uint {
         j * self.r + i
     }
 
-    fn at(&self, i: uint, j: uint) -> f32 {
+    pub fn at(&self, i: uint, j: uint) -> f32 {
         self.data[self.ind(i, j)]
     }
 
-    fn at_mut<'a>(&'a mut self, i: uint, j: uint) -> &'a mut f32 {
+    pub fn at_mut<'a>(&'a mut self, i: uint, j: uint) -> &'a mut f32 {
         let i = self.ind(i, j);
         self.data.index_mut(&i)
     }
 
-    fn set(&mut self, i: uint, j: uint, x: f32) {
+    pub fn set(&mut self, i: uint, j: uint, x: f32) {
         let i = self.ind(i, j);
         self.data[i] = x;
     }
 
-    fn col(&self, j: uint) -> ColView {
+    pub fn col(&self, j: uint) -> ColView {
         if j >= self.c {
             panic!("Column index out of bounds");
         }
         ColView{m: self, col: j}
     }
 
-    fn is_square(&self) -> bool {
+    pub fn is_square(&self) -> bool {
         self.r == self.c
     }
 
-    fn lu(&self) -> LU {
+    pub fn lu(&self) -> LU {
         LU::of(self)
     }
 
-    fn row_add(&mut self, src: uint, dst: uint, c: f32) {
+    pub fn row_add(&mut self, src: uint, dst: uint, c: f32) {
         for j in range(0, self.c) {
             *self.at_mut(dst, j) += c * self.at(src, j);
         }
     }
 
-    fn col_add(&mut self, src: uint, dst: uint, c: f32) {
+    pub fn col_add(&mut self, src: uint, dst: uint, c: f32) {
         for i in range(0, self.r) {
             *self.at_mut(i, dst) += c * self.at(i, src);
         }
     }
 
-    fn swap_row(&mut self, a: uint, b: uint) {
+    pub fn swap_row(&mut self, a: uint, b: uint) {
         for j in range(0, self.c) {
             unsafe {
                 ptr::swap(self.at_mut(a, j), self.at_mut(b, j));
@@ -257,7 +200,7 @@ impl Mul<Mat, Mat> for Mat {
     }
 }
 
-struct ColView<'a> {
+pub struct ColView<'a> {
     m: &'a Mat,
     col: uint
 }
@@ -277,17 +220,17 @@ impl<'a> Index<uint, f32> for ColView<'a> {
     }
 }
 
-struct Permutation {
+pub struct Permutation {
     v: Vec<uint>,
 }
 
 impl Permutation {
-    fn ident(n: uint) -> Permutation {
+    pub fn ident(n: uint) -> Permutation {
         let v = Vec::from_fn(n, |i| i);
         Permutation{v: v}
     }
 
-    fn swap(n: uint, i: uint, j: uint) -> Permutation {
+    pub fn swap(n: uint, i: uint, j: uint) -> Permutation {
         let v = Vec::from_fn(
             n,
             |k|
@@ -297,18 +240,18 @@ impl Permutation {
         Permutation{v: v}
     }
 
-    fn len(&self) -> uint {
+    pub fn len(&self) -> uint {
         self.v.len()
     }
 
     // Equavalent to Permutation::swap(i, j) * self
-    fn swap_left(&mut self, i: uint, j: uint) {
+    pub fn swap_left(&mut self, i: uint, j: uint) {
         let val = self.v[i];
         self.v[i] = self.v[j];
         self.v[j] = val;
     }
 
-    fn to_mat(&self) -> Mat {
+    pub fn to_mat(&self) -> Mat {
         let mut m = Mat::zero(self.v.len(), self.v.len());
         for (i, j) in self.v.iter().enumerate() {
             m.set(i, *j, 1.0);
@@ -316,7 +259,7 @@ impl Permutation {
         m
     }
 
-    fn inv(&self) -> Permutation {
+    pub fn inv(&self) -> Permutation {
         let mut v = Vec::from_elem(self.v.len(), 0);
         for (a, b) in self.v.iter().enumerate() {
             v[*b] = a;
@@ -368,144 +311,6 @@ impl<T:Clone> Mul<Vec<T>, Vec<T>> for Permutation {
     }
 }
 
-
-struct LU {  // P * A = L * U
-    // TODO: Store in a single mat
-    L: Mat,
-    U: Mat,
-    P: Permutation,
-}
-
-impl LU {
-    pub fn of(A: &Mat) -> LU {
-        if A.r != A.c {
-            panic!("Cannot take LU of a non-square matrix");
-        }
-        let mut L = Mat::ident(A.r);
-        let mut U = A.clone();
-        let mut P = Permutation::ident(A.r);
-
-        // Reduce from row i, using pivot at (i, i)
-        for i in range(0, A.c - 1) {
-            if U(i, i) == 0.0 {
-                // Finds a non-zero entry
-                let mut nonzero = 0u;
-                for j in range(i + 1, U.r) {
-                    if U(j, i) != 0.0 {  // TODO: near, rather than equals
-                        nonzero = j;
-                        break
-                    }
-                }
-
-                if nonzero == 0 {
-                    panic!("Matrix is non-invertable.  Cannot take LU");
-                }
-
-                P.swap_left(i, nonzero);
-                U.swap_row(i, nonzero);
-            }
-
-            // Reduces row j (from row i)
-            for j in range(i + 1, A.r) {
-                let x = U(j, i) / U(i, i);
-                U.row_add(i, j, -x);
-                L.set(j, i, x);
-            }
-
-            println!("After rref {}:\nP = {}\nL = \n{}\nU = \n{}", i, P, L, U);
-        }
-
-        LU{L: L, U: U, P: P}
-    }
-
-    pub fn solve(&self, b: &Vec<f32>) -> Vec<f32> {
-        if self.L.r != b.len() {
-            panic!("Vec has wrong length for LU solving");
-        }
-
-        let mut x = Vec::from_elem(b.len(), 0.0);
-
-        // Propagate through L-inverse
-        //
-        // x := L^-1 * b
-        // x(i) := b(i) - x(0)*L(i,0) - x(1)*L(i,1) - ... - x(i-1)*L(i,i-1)
-        for i in range(0, x.len()) {
-            x[i] = b[self.P[i]];
-            for j in range(0, i) {
-                x[i] -= x[j] * self.L.at(i, j);
-            }
-        }
-
-        // Propagate through U-inverse
-        //
-        // x' := U^-1 * x
-        // x'(i) := 1/U(i,i) * (x(i) - x'(i+1)*U(i,i+1) - x'(i+2)*U(i,i+2) - ...)
-        for i in range(0, x.len()).rev() {
-            x[i] = x[i];
-            for j in range(i + 1, x.len()) {
-                x[i] -= x[j] * self.U.at(i, j);
-            }
-            x[i] = x[i] / self.U.at(i, i);
-        }
-
-        x
-    }
-
-    pub fn resolve(&self) -> Mat {
-        self.P.inv() * (self.L * self.U)
-    }
-}
-
-struct QR {
-    // TODO: Store in a single mat
-    Q: Mat,
-    R: Mat,
-}
-
-impl QR {
-    pub fn of(A: &Mat) -> QR {
-        if !A.is_square() {
-            panic!("QR must apply to square matrix");
-        }
-        let R = A.clone();
-        let Q = Mat::ident(A.r);
-
-        let x = A.col(0);
-        //let v = ;
-
-        QR{Q: Q, R: R}
-    }
-}
-
-fn main() {
-    /*
-    println!("Hello!");
-
-    let mut a = Mat::zero(2, 2);
-
-    println!("a = \n{}", a);
-
-    println!("a[0, 0] = {}", a(0, 0));
-    {
-        let x: &mut f32 = a.atmut(0, 0);
-        //a.atmut(0, 0) = 1.0;
-        *x = 1.0;
-    }
-    *a.atmut(0, 0) = 2.0;
-    //a(0, 0) = 1.0;
-    println!("a[0, 0] = {}", a(0, 0));
-    println!("a = \n{}", a);
-
-    let a = Mat::from_slice(2, 2, [1.0, 2.0, 3.0, 4.0]);
-    let b = Mat::from_slice(2, 2, [5.0, 6.0, 7.0, 8.0]);
-
-    println!("a = \n{}", a);
-    println!("b = \n{}", b);
-
-    let c = a + b;
-    println!("c = \n{}", c);
-     */
-}
 
 #[test]
 fn test_add() {
@@ -568,88 +373,6 @@ fn test_mul_simple() {
 }
 
 #[test]
-fn test_lu_3x3() {
-    let A = Mat::from_slice(3, 3, &[1.0, -2.0, 3.0,
-                                    2.0, -5.0, 12.0,
-                                    -4.0, 2.0, -10.0]);
-    let lu = A.lu();
-    assert_mat_near!(lu.resolve(), A, 0.001);
-}
-
-#[test]
-fn test_lu_2x2_perm() {
-    let A = Mat::from_slice(
-        2, 2,
-        &[0.0, 1.0,
-          -1.0, 0.0]);
-
-    let lu = A.lu();
-
-    println!("Result of LU:\nP = {}\nL = \n{}\nU = \n{}\n", lu.P, lu.L, lu.U);
-    let LU = lu.L * lu.U;
-    println!("L * U = \n{}", LU);
-
-    println!("P = {}\nP^-1 = {}", lu.P, lu.P.inv());
-
-    assert_mat_near!(lu.resolve(), A, 0.001);
-}
-
-#[test]
-fn test_solve_2x2_ident() {
-    // Ax = b
-    let A = Mat::ident(2);
-    let b : Vec<f32> = vec!{1.0, 2.0};
-
-    let lu = A.lu();
-    let x = lu.solve(&b);
-
-    assert_eq!(x[0], b[0]);
-    assert_eq!(x[1], b[1]);
-}
-
-#[test]
-fn test_solve_2x2_upper() {
-    // Ax = b
-    let A = Mat::from_slice(2, 2, &[1.0, 2.0, 0.0, 1.0]);
-    let b : Vec<f32> = vec!{1.0, 2.0};
-
-    let lu = A.lu();
-    let x = lu.solve(&b);
-
-    assert_eq!(x[0], -3.0);
-    assert_eq!(x[1], 2.0);
-}
-
-#[test]
-fn test_solve_2x2_lower() {
-    // Ax = b
-    let A = Mat::from_slice(2, 2, &[1.0, 0.0, 2.0, 1.0]);
-    let b : Vec<f32> = vec!{1.0, 2.0};
-
-    let lu = A.lu();
-    let x = lu.solve(&b);
-
-    assert_eq!(x[0], 1.0);
-    assert_eq!(x[1], 0.0);
-}
-
-#[test]
-fn test_solve_3x3_simple() {
-    let A = Mat::from_slice(3, 3, &[1.0, -2.0, 3.0,
-                                    2.0, -5.0, 12.0,
-                                    0.0, 2.0, -10.0]);
-    let b = vec!{3.0, 2.0, 1.0};
-
-    let lu = A.lu();
-    let x = lu.solve(&b);
-    println!("L = \n{}\nU = \n{}", lu.L, lu.U);
-
-    assert_eq!(x[0], -20.5);
-    assert_eq!(x[1], -17.0);
-    assert_eq!(x[2], -3.5);
-}
-
-#[test]
 fn test_perm_identity() {
     let p = Permutation::ident(3);
     let m = p.to_mat();
@@ -706,21 +429,6 @@ fn test_perm_mat() {
           1.0, 2.0, 3.0]);
 
     assert_mat_near!(B, expect, 0.00001);
-}
-
-#[test]
-fn test_2x2_solve_perm_simple() {
-    let A = Mat::from_slice(
-        2, 2,
-        &[0.0, 1.0,
-          -1.0, 0.0]);
-
-    let b = vec!{2.0, -3.0};
-
-    let lu = A.lu();
-    let x = lu.solve(&b);
-    assert_eq!(x[0], 3.0);
-    assert_eq!(x[1], 2.0);
 }
 
 #[test]

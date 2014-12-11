@@ -1,0 +1,5 @@
+[package]
+
+name = "rustmat"
+version = "0.0.1"
+authors = ["Stuart Glaser <stuglaser@gmail.com>"]
