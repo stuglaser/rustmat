@@ -9,11 +9,22 @@ impl QR {
         if !A.is_square() {
             panic!("QR must apply to square matrix");
         }
-        let R = A.clone();
-        let Q = Mat::ident(A.r);
+        let mut R = A.clone();
+        let mut Q = Mat::ident(A.r);
 
-        let x = A.col(0);
-        //let v = ;
+        let x = R.col(0);
+
+        let mut v = x - x.norm() * e1;
+        v.normalize();
+
+        // H := I - 2vv'
+        // R := H * R
+
+        R -= 2 * v * (v.t() * R);
+
+        //R.block_lr() -= 2 * v * (v.t() * R.block_lr());
+        
+        
 
         QR{Q: Q, R: R}
     }

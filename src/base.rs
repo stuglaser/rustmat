@@ -7,15 +7,27 @@ pub trait VecBase : Index<uint, f32> {
     fn len(&self) -> uint;
 }
 
+pub trait RowVec : VecBase {
+    pub fn t(&self) -> ColVec;
+}
+
+pub trait ColVec : VecBase {
+    pub fn t(&self) -> RowVec;
+}
+
+pub trait MatTrait : Index<(uint, uint), f32> {
+    pub fn rows(&self) -> uint;
+    pub fn cols(&self) -> uint;
+    pub fn t<'a>(&'a self) -> Transposed<'a, Self>;
+
+    pub fn row(&self, i: uint) -> RowVec;
+    pub fn col(&self, j: uint) -> ColVec;
+}
 
 pub struct Mat {
     pub r: uint,
     pub c: uint,
     pub data: Vec<f32>  // Column major
-}
-
-fn _idx(r: uint, i: uint, j: uint) -> uint {
-    j * r + i
 }
 
 impl Mat {
@@ -65,13 +77,6 @@ impl Mat {
         self.data[i] = x;
     }
 
-    pub fn col(&self, j: uint) -> ColView {
-        if j >= self.c {
-            panic!("Column index out of bounds");
-        }
-        ColView{m: self, col: j}
-    }
-
     pub fn is_square(&self) -> bool {
         self.r == self.c
     }
@@ -98,6 +103,72 @@ impl Mat {
                 ptr::swap(self.at_mut(a, j), self.at_mut(b, j));
             }
         }
+    }
+}
+
+impl MatTrait for Mat {
+    fn rows(&self) -> uint {
+        self.r
+    }
+
+    fn cols(&self) -> uint {
+        self.c
+    }
+    
+    fn t<'a>(&'a self) -> Transposed<'a, Mat> {
+        Transposed{m: self}
+    }
+
+    pub fn row(&self, i: uint) -> RowView<Mat> {
+        if i >= self.r {
+            panic!("Row index out of bounds");
+        }
+        RowView{m: self, row: i}
+    }
+
+    pub fn col(&self, j: uint) -> ColView<Mat> {
+        if j >= self.c {
+            panic!("Column index out of bounds");
+        }
+        ColView{m: self, col: j}
+    }
+}
+
+struct Transposed<'a, T: MatTrait + 'a> {
+    m: &'a T
+}
+
+impl<'a, T: MatTrait + 'a> MatTrait for Transposed<'a, T> {
+    fn rows(&self) -> uint {
+        self.m.cols()
+    }
+
+    fn cols(&self) -> uint {
+        self.m.rows()
+    }
+    
+    fn t<'r>(&'r self) -> Transposed<'r, Transposed<'a, T>> {
+        Transposed{m: self}
+    }
+
+    pub fn row(&self, i: uint) -> RowView<Transposed<'a, T>> {
+        if i >= self.r {
+            panic!("Row index out of bounds");
+        }
+        RowView{m: self, row: i}
+    }
+
+    pub fn col(&self, j: uint) -> ColView<Transposed<'a, T>> {
+        if j >= self.c {
+            panic!("Column index out of bounds");
+        }
+        ColView{m: self, col: j}
+    }
+}
+
+impl<'a, T:MatTrait + 'a> Index<(uint, uint), f32> for Transposed<'a, T> {
+    fn index<'r>(&'r self, &(i, j): &(uint, uint)) -> &f32 {
+        self.m.index(&(j, i))
     }
 }
 
@@ -191,7 +262,8 @@ impl Mul<Mat, Mat> for Mat {
         let mut data = Vec::from_elem(self.r * rhs.c, 0.0);
         for i in range(0, self.r) {
             for j in range(0, rhs.c) {
-                data[_idx(self.r, i, j)] =
+                //data[_idx(self.r, i, j)] =
+                data[self.ind(i, j)] =
                     range(0, self.c).fold(0.0, |x, k| x + self.at(i, k) * rhs.at(k, j));
             }
         }
@@ -200,25 +272,53 @@ impl Mul<Mat, Mat> for Mat {
     }
 }
 
-pub struct ColView<'a> {
-    m: &'a Mat,
+pub struct ColView<'a, T:MatTrait + 'a> {
+    m: &'a T,
     col: uint
 }
 
-impl<'a> ColView<'a> {
-}
-
-impl<'a> VecBase for ColView<'a> {
+impl<'a, T:MatTrait> VecBase for ColView<'a, T> {
     fn len(&self) -> uint {
         self.m.r
     }
 }
 
-impl<'a> Index<uint, f32> for ColView<'a> {
+impl<'a, T:MatTrait> ColVec for ColView<'a, T> {
+    fn t(&self) -> RowView<Transposed<'a, T>> {
+        self.m.t().row(self.col)
+    }
+}
+
+impl<'a, T:MatTrait> Index<uint, f32> for ColView<'a, T> {
     fn index(&self, index: &uint) -> &f32 {
         self.m.index(&(*index, self.col))
     }
 }
+
+
+pub struct RowView<'a, T:MatTrait + 'a> {
+    m: &'a T,
+    row: uint
+}
+
+impl<'a, T:MatTrait> VecBase for RowView<'a, T> {
+    fn len(&self) -> uint {
+        self.m.c
+    }
+}
+
+impl<'a, T:MatTrait> RowVec for RowView<'a, T> {
+    fn t(&self) -> ColView<'a, T> {
+        self.m.t().col(self.row)
+    }
+}
+
+impl<'a, T:MatTrait> Index<uint, f32> for RowView<'a, T> {
+    fn index(&self, index: &uint) -> &f32 {
+        self.m.index(&(self.row, *index))
+    }
+}
+
 
 pub struct Permutation {
     v: Vec<uint>,
@@ -445,4 +545,19 @@ fn test_col_view() {
     let c2 = a.col(2);
     assert_eq!(c2[0], 6.0);
     assert_eq!(c2[2], 22.0);
+}
+
+#[test]
+fn test_transpose_vecs() {
+    let a = Mat::from_slice(3, 1, &[2.0, 4.0, 6.0]);
+    let v = a.col(0);
+    let vt = v.t();
+
+    assert_eq!(vt * v, 56.0);
+    assert_mat_near!(v * vt,
+                     Mat::from_slice(3, 3,
+                                     &[4.0, 8.0, 12.0,
+                                       8.0, 16.0, 24.0,
+                                       12.0, 24.0, 36.0]),
+                     0.00001);
 }
