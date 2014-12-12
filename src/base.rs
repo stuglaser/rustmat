@@ -3,25 +3,10 @@ use std::ptr;
 
 use lu::LU;
 
-pub trait VecBase : Index<uint, f32> {
-    fn len(&self) -> uint;
-}
-
-pub trait RowVec : VecBase {
-    pub fn t(&self) -> ColVec;
-}
-
-pub trait ColVec : VecBase {
-    pub fn t(&self) -> RowVec;
-}
-
-pub trait MatTrait : Index<(uint, uint), f32> {
-    pub fn rows(&self) -> uint;
-    pub fn cols(&self) -> uint;
-    pub fn t<'a>(&'a self) -> Transposed<'a, Self>;
-
-    pub fn row(&self, i: uint) -> RowVec;
-    pub fn col(&self, j: uint) -> ColVec;
+pub trait MatBase : Index<(uint, uint), f32> {
+    fn rows(&self) -> uint;
+    fn cols(&self) -> uint;
+    fn t<'a>(&'a self) -> Transposed<'a, Self>;
 }
 
 pub struct Mat {
@@ -106,7 +91,7 @@ impl Mat {
     }
 }
 
-impl MatTrait for Mat {
+impl MatBase for Mat {
     fn rows(&self) -> uint {
         self.r
     }
@@ -119,6 +104,7 @@ impl MatTrait for Mat {
         Transposed{m: self}
     }
 
+    /*
     pub fn row(&self, i: uint) -> RowView<Mat> {
         if i >= self.r {
             panic!("Row index out of bounds");
@@ -132,13 +118,14 @@ impl MatTrait for Mat {
         }
         ColView{m: self, col: j}
     }
+    */
 }
 
-struct Transposed<'a, T: MatTrait + 'a> {
+pub struct Transposed<'a, T: MatBase + 'a> {
     m: &'a T
 }
 
-impl<'a, T: MatTrait + 'a> MatTrait for Transposed<'a, T> {
+impl<'a, T: MatBase + 'a> MatBase for Transposed<'a, T> {
     fn rows(&self) -> uint {
         self.m.cols()
     }
@@ -151,6 +138,7 @@ impl<'a, T: MatTrait + 'a> MatTrait for Transposed<'a, T> {
         Transposed{m: self}
     }
 
+    /*
     pub fn row(&self, i: uint) -> RowView<Transposed<'a, T>> {
         if i >= self.r {
             panic!("Row index out of bounds");
@@ -164,13 +152,27 @@ impl<'a, T: MatTrait + 'a> MatTrait for Transposed<'a, T> {
         }
         ColView{m: self, col: j}
     }
+*/
 }
 
-impl<'a, T:MatTrait + 'a> Index<(uint, uint), f32> for Transposed<'a, T> {
+impl<'a, T:MatBase + 'a> Index<(uint, uint), f32> for Transposed<'a, T> {
     fn index<'r>(&'r self, &(i, j): &(uint, uint)) -> &f32 {
         self.m.index(&(j, i))
     }
 }
+
+impl<'a, T:MatBase + 'a> fmt::Show for Transposed<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for i in range(0, self.rows()) {
+            for j in range(0, self.cols()) {
+                try!(write!(f, "{}  ", self[(i, j)]))
+            }
+            try!(write!(f, "\n"))
+        }
+        write!(f, "")
+    }
+}
+
 
 impl Clone for Mat {
     fn clone(&self) -> Mat {
@@ -269,53 +271,6 @@ impl Mul<Mat, Mat> for Mat {
         }
 
         Mat{r: self.r, c: rhs.c, data: data}
-    }
-}
-
-pub struct ColView<'a, T:MatTrait + 'a> {
-    m: &'a T,
-    col: uint
-}
-
-impl<'a, T:MatTrait> VecBase for ColView<'a, T> {
-    fn len(&self) -> uint {
-        self.m.r
-    }
-}
-
-impl<'a, T:MatTrait> ColVec for ColView<'a, T> {
-    fn t(&self) -> RowView<Transposed<'a, T>> {
-        self.m.t().row(self.col)
-    }
-}
-
-impl<'a, T:MatTrait> Index<uint, f32> for ColView<'a, T> {
-    fn index(&self, index: &uint) -> &f32 {
-        self.m.index(&(*index, self.col))
-    }
-}
-
-
-pub struct RowView<'a, T:MatTrait + 'a> {
-    m: &'a T,
-    row: uint
-}
-
-impl<'a, T:MatTrait> VecBase for RowView<'a, T> {
-    fn len(&self) -> uint {
-        self.m.c
-    }
-}
-
-impl<'a, T:MatTrait> RowVec for RowView<'a, T> {
-    fn t(&self) -> ColView<'a, T> {
-        self.m.t().col(self.row)
-    }
-}
-
-impl<'a, T:MatTrait> Index<uint, f32> for RowView<'a, T> {
-    fn index(&self, index: &uint) -> &f32 {
-        self.m.index(&(self.row, *index))
     }
 }
 
@@ -532,6 +487,25 @@ fn test_perm_mat() {
 }
 
 #[test]
+fn test_transpose() {
+    let a = Mat::from_slice(
+        3, 4, &[2.0, 4.0, 6.0, 8.0,
+                10.0, 12.0, 14.0, 16.0,
+                18.0, 20.0, 22.0, 24.0]);
+
+    let b = a.t();
+    assert_eq!(b.rows(), a.cols());
+    assert_eq!(b.cols(), a.rows());
+    assert_mat_near!(b, Mat::from_slice(4, 3,
+                                        &[2.0, 10.0, 18.0,
+                                          4.0, 12.0, 20.0,
+                                          6.0, 14.0, 22.0,
+                                          8.0, 16.0, 24.0]),
+                     0.00001);
+}
+
+/*
+#[test]
 fn test_col_view() {
     let a = Mat::from_slice(
         3, 4, &[2.0, 4.0, 6.0, 8.0,
@@ -561,3 +535,4 @@ fn test_transpose_vecs() {
                                        12.0, 24.0, 36.0]),
                      0.00001);
 }
+*/

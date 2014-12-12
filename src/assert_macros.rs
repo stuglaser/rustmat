@@ -19,18 +19,19 @@ macro_rules! assert_vec_near(
     }
 )
 
+#[macro_export]
 macro_rules! assert_mat_near(
     ($A_expr:expr, $B_expr:expr, $eps_expr:expr) => {
         match (&($A_expr), &($B_expr), &($eps_expr)) {
             (A, B, eps) => {
                 use std::num::Float;
-                if A.r != B.r || A.c != B.c {
+                if A.rows() != B.rows() || A.cols() != B.cols() {
                     panic!("Matrix sizes don't match: ({}, {}) vs ({}, {})",
-                           A.r, A.c, B.r, B.c);
+                           A.rows(), A.cols(), B.rows(), B.cols());
                 }
-                for i in range(0, A.r) {
-                    for j in range(0, A.c) {
-                        let x : f32 = A.at(i, j) - B.at(i, j);
+                for i in range(0, A.rows()) {
+                    for j in range(0, A.cols()) {
+                        let x : f32 = A[(i, j)] - B[(i, j)];
                         if x.abs() > *eps {
                             panic!("Matrices aren't equal: \n{} and \n{}", A, B);
                         }

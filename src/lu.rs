@@ -1,4 +1,4 @@
-use base::{Mat, Permutation};
+use base::{MatBase, Mat, Permutation};
 
 pub struct LU {  // P * A = L * U
     // TODO: Store in a single mat
@@ -9,7 +9,7 @@ pub struct LU {  // P * A = L * U
 
 impl LU {
     pub fn of(A: &Mat) -> LU {
-        if A.r != A.c {
+        if A.rows() != A.cols() {
             panic!("Cannot take LU of a non-square matrix");
         }
         let mut L = Mat::ident(A.r);
@@ -183,4 +183,3 @@ fn test_2x2_solve_perm_simple() {
     assert_eq!(x[0], 3.0);
     assert_eq!(x[1], 2.0);
 }
-

@@ -6,7 +6,7 @@
 
 #![crate_name = "rustmat"]
 
-pub use base::{Mat, VecBase};
+pub use base::{Mat, Transposed};
 pub use lu::LU;
 
 mod assert_macros;
