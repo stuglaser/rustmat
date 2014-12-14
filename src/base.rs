@@ -7,6 +7,10 @@ pub trait MatBase : Index<(uint, uint), f32> {
     fn rows(&self) -> uint;
     fn cols(&self) -> uint;
     fn t<'a>(&'a self) -> Transposed<'a, Self>;
+
+    // I don't think `block` can be part of a trait until rust itself changes:
+    // https://github.com/aturon/rfcs/blob/collections-conventions/text/0000-collection-conventions.md#lack-of-iterator-methods
+    //fn block<'a>(&self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, Self>;
 }
 
 pub struct Mat {
@@ -88,6 +92,10 @@ impl Mat {
                 ptr::swap(self.at_mut(a, j), self.at_mut(b, j));
             }
         }
+    }
+
+    fn block<'a>(&'a self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, Mat> {
+        Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
     }
 }
 
@@ -271,6 +279,46 @@ impl Mul<Mat, Mat> for Mat {
         }
 
         Mat{r: self.r, c: rhs.c, data: data}
+    }
+}
+
+
+pub struct Block<'a, T:MatBase + 'a> {
+    m: &'a T,
+    i0: uint,
+    j0: uint,
+    i1: uint,
+    j1: uint
+}
+
+impl<'a, T:MatBase> Block<'a, T> {
+    pub fn rows(&self) -> uint {
+        self.i1 - self.i0
+    }
+
+    pub fn cols(&self) -> uint {
+        self.j1 - self.j0
+    }
+}
+
+impl<'a, T:MatBase> Index<(uint, uint), f32> for Block<'a, T> {
+    fn index(&self, &(i, j): &(uint, uint)) -> &f32 {
+        if i >= self.rows() || j >= self.cols() {
+            panic!("Index is outside the range of the block");
+        }
+        self.m.index(&(i + self.i0, j + self.j0))
+    }
+}
+
+impl<'a, T:MatBase> fmt::Show for Block<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for i in range(0, self.rows()) {
+            for j in range(0, self.cols()) {
+                try!(write!(f, "{}  ", self[(i, j)]))
+            }
+            try!(write!(f, "\n"))
+        }
+        write!(f, "")
     }
 }
 
@@ -502,6 +550,19 @@ fn test_transpose() {
                                           6.0, 14.0, 22.0,
                                           8.0, 16.0, 24.0]),
                      0.00001);
+}
+
+#[test]
+fn test_block() {
+    let a = Mat::from_slice(
+        3, 4, &[2.0, 4.0, 6.0, 8.0,
+                10.0, 12.0, 14.0, 16.0,
+                18.0, 20.0, 22.0, 24.0]);
+
+    let b1 = a.block(0, 1, 2, 4);
+    assert_mat_near!(b1, Mat::from_slice(2, 3,
+                                         &[4.0, 6.0, 8.0,
+                                           12.0, 14.0, 16.0]), 0.00001);
 }
 
 /*
