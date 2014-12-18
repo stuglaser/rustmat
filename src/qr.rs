@@ -26,8 +26,9 @@ impl QR {
         // R := H * R
 
         //let bar = v * (v.t() * R) * 2.0;  // ICE
-        let foo: Mat = v * (v.t() * R) * 2.0;
-        R.sub_assign(&(v * (v.t() * R) * 2));
+        //let foo: Mat = v * (v.t() * R) * 2.0;
+        //R.sub_assign(foo);
+        R.sub_assign(v * (v.t() * R) * 2.0);
 
         //R.block_lr() -= 2 * v * (v.t() * R.block_lr());
         

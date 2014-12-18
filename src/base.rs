@@ -8,12 +8,12 @@ use std::slice;
 use lu::LU;
 
 
-trait AddAssign<RHS> {
-    fn add_assign(&mut self, other: &RHS);
+pub trait AddAssign<RHS> {
+    fn add_assign(&mut self, other: RHS);
 }
 
-trait SubAssign<RHS> {
-    fn sub_assign(&mut self, other: &RHS);
+pub trait SubAssign<RHS> {
+    fn sub_assign(&mut self, other: RHS);
 }
 
 struct CoorIterator {
@@ -139,7 +139,15 @@ impl Mat {
         Mat{r: r, c: c, data: data}
     }
 
-    pub fn from_fn<F: FnMut<(uint, uint), f32>>(r: uint, c: uint, op: F) -> Mat {
+    pub fn from_fn<F: FnMut<(uint, uint), f32>>(r: uint, c: uint, mut op: F) -> Mat {
+        let mut data = Vec::with_capacity(r * c);
+        for j in range(0, c) {
+            for i in range(0, r) {
+                let foo = op(i, j);
+                data.push(op(i, j));
+            }
+        }
+        Mat{r: r, c: c, data: data}
     }
 
     pub fn ind(&self, i: uint, j: uint) -> uint {
@@ -213,12 +221,12 @@ impl Mat {
         Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
     }
 
-    fn normalize(&mut self) {
+    pub fn normalize(&mut self) {
         let n = self.norm();
         if n == 0.0 {
             panic!("Cannot normalize when norm is 0");
         }
-        for el in self.data.iter() {
+        for el in self.data.iter_mut() {
             *el /= n;
         }
     }
@@ -373,33 +381,25 @@ impl PartialEq for Mat {
 }
 
 impl Add<Mat, Mat> for Mat {
-    fn add(&self, rhs: &Mat) -> Mat {
-        if self.r != rhs.r || self.c != rhs.c {
-            panic!("Size mismatch in Add: ({}, {}) vs ({}, {})",
-                   self.r, self.c, rhs.r, rhs.c);
-        }
-
-        Mat{r: self.r, c: self.c,
-            data: Vec::from_fn(self.data.len(),
-                               |i| self.data[i] + rhs.data[i])}
+    fn add(mut self, rhs: Mat) -> Mat {
+        check_same_size(&self, &rhs, &"Add");
+        self.add_assign(rhs);
+        self
     }
 }
 
 impl<RHS:MatBase> AddAssign<RHS> for Mat {
-    fn add_assign(&mut self, rhs: &RHS) {
-        if !self.same_size(rhs) {
-            panic!("Size mismatch in AddAssign");
-        }
-
+    fn add_assign(&mut self, rhs: RHS) {
+        check_same_size(self, &rhs, &"AddAssign");
         for coor in self.coor_iter() {
             self[coor] += rhs[coor];
         }
     }
 }
 
-impl<'a, T:MatBase, U:MatBase> Sub<T, Mat> for U {
-    fn sub(&self, rhs: &T) -> Mat {
-        check_same_size(self, rhs, &"Sub");
+impl<T:MatBase, U:MatBase> Sub<T, Mat> for U {
+    fn sub(self, rhs: T) -> Mat {
+        check_same_size(&self, &rhs, &"Sub");
 
         let mut m = Mat::zero(self.rows(), self.cols());
         for coor in self.coor_iter() {
@@ -410,11 +410,27 @@ impl<'a, T:MatBase, U:MatBase> Sub<T, Mat> for U {
 }
 
 impl<RHS:MatBase> SubAssign<RHS> for Mat {
-    fn sub_assign(&mut self, rhs: &RHS) {
-        check_same_size(self, rhs, &"SubAssign");
+    fn sub_assign(&mut self, rhs: RHS) {
+        check_same_size(self, &rhs, &"SubAssign");
         for coor in self.coor_iter() {
             self[coor] -= rhs[coor];
         }
+    }
+}
+
+impl<LHS:MatBase, RHS:MatBase> Mul<RHS, Mat> for LHS {
+    fn mul(self, rhs:RHS) -> Mat {
+        Mat::from_fn(
+            self.rows(), rhs.cols(),
+            |i, j|
+            range(0, self.cols()).fold(0.0, |x, k| x + self[(i, k)] * rhs[(k, j)]))
+    }
+}
+
+impl<LHS:MatBase> Mul<f32, Mat> for LHS {
+    fn mul(self, scalar: f32) -> Mat {
+        Mat::from_fn(self.rows(), self.cols(),
+                     |i, j| self[(i, j)] * scalar)
     }
 }
 
@@ -441,6 +457,7 @@ impl Mul<Mat, Mat> for Mat {
 }
 */
 
+/*
 impl<T:MatBase, U: LMulMatBase> Mul<U, Mat> for T {
     fn mul(&self, rhs: &U) -> Mat {
         rhs.lmul_matbase(self)
@@ -463,7 +480,7 @@ impl<U:MatBase> LMulMatBase for U {
         rhs.mul_mat(self)
     }
 }
-
+*/
 
 pub struct Block<'a, T:MatBase + 'a> {
     m: &'a T,
@@ -623,14 +640,14 @@ impl Index<uint, uint> for Permutation {
 }
 
 impl Mul<Permutation, Permutation> for Permutation {
-    fn mul(&self, rhs: &Permutation) -> Permutation {
+    fn mul(self, rhs: Permutation) -> Permutation {
         let v = Vec::from_fn(self.len(), |i| rhs[self[i]]);
         Permutation{v: v}
     }
 }
 
 impl Mul<Mat, Mat> for Permutation {
-    fn mul(&self, rhs: &Mat) -> Mat {
+    fn mul(self, rhs: Mat) -> Mat {
         if self.v.len() != rhs.r {
             panic!("Cannot permute matrix of mismatched size");
         }
@@ -645,7 +662,7 @@ impl Mul<Mat, Mat> for Permutation {
 }
 
 impl<T:Clone> Mul<Vec<T>, Vec<T>> for Permutation {
-    fn mul(&self, rhs: &Vec<T>) -> Vec<T> {
+    fn mul(self, rhs: Vec<T>) -> Vec<T> {
         if self.len() != rhs.len() {
             panic!("Permutation len doesn't match Vec len");
         }
