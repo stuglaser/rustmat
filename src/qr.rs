@@ -14,26 +14,27 @@ impl QR {
         let mut R = A.clone();
         let mut Q = Mat::ident(A.r);
 
-        let x = R.col(0);
 
-        let e1 = Mat::zero(R.rows(), 1);
+        let mut e1 = Mat::zero(R.rows(), 1);
 
+        // All I want for christmas is a smarter borrow checker
+        let w = {
+            let x = R.col(0);
+            e1[(0, 0)] = x.norm();
+            let mut v = x - e1;
+            v.normalize();
+            v
+        };
 
-        let mut v = x - e1 * x.norm();
-        v.normalize();
-
-        // H := I - 2vv'
+        // H := I - 2ww'
         // R := H * R
-
-        //let bar = v * (v.t() * R) * 2.0;  // ICE
-        //let foo: Mat = v * (v.t() * R) * 2.0;
-        //R.sub_assign(foo);
-        R.sub_assign(v * (v.t() * R) * 2.0);
+        let tmp = &w.t() * &R;  // Borrow checker limitations
+        R.sub_assign(&w * tmp * 2.0);
 
         //R.block_lr() -= 2 * v * (v.t() * R.block_lr());
-        
-        
 
+        
+        
         QR{Q: Q, R: R}
     }
 }

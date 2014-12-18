@@ -143,7 +143,6 @@ impl Mat {
         let mut data = Vec::with_capacity(r * c);
         for j in range(0, c) {
             for i in range(0, r) {
-                let foo = op(i, j);
                 data.push(op(i, j));
             }
         }
@@ -420,6 +419,24 @@ impl<RHS:MatBase> SubAssign<RHS> for Mat {
 
 impl<LHS:MatBase, RHS:MatBase> Mul<RHS, Mat> for LHS {
     fn mul(self, rhs:RHS) -> Mat {
+        Mat::from_fn(
+            self.rows(), rhs.cols(),
+            |i, j|
+            range(0, self.cols()).fold(0.0, |x, k| x + self[(i, k)] * rhs[(k, j)]))
+    }
+}
+
+impl<'a, LHS:MatBase + 'a, RHS:MatBase> Mul<RHS, Mat> for &'a LHS {
+    fn mul(self, rhs:RHS) -> Mat {
+        Mat::from_fn(
+            self.rows(), rhs.cols(),
+            |i, j|
+            range(0, self.cols()).fold(0.0, |x, k| x + self[(i, k)] * rhs[(k, j)]))
+    }
+}
+
+impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS, Mat> for &'a LHS {
+    fn mul(self, rhs: &RHS) -> Mat {
         Mat::from_fn(
             self.rows(), rhs.cols(),
             |i, j|

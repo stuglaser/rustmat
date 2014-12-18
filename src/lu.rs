@@ -83,7 +83,7 @@ impl LU {
     }
 
     pub fn resolve(&self) -> Mat {
-        self.P.inv() * (self.L * self.U)
+        self.P.inv() * (&self.L * &self.U)
     }
 }
 
@@ -106,7 +106,7 @@ fn test_lu_2x2_perm() {
     let lu = A.lu();
 
     println!("Result of LU:\nP = {}\nL = \n{}\nU = \n{}\n", lu.P, lu.L, lu.U);
-    let LU = lu.L * lu.U;
+    let LU = &lu.L * &lu.U;
     println!("L * U = \n{}", LU);
 
     println!("P = {}\nP^-1 = {}", lu.P, lu.P.inv());
