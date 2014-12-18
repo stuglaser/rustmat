@@ -1,16 +1,107 @@
 use std::fmt;
+use std::iter::AdditiveIterator;
+use std::num;
 use std::ptr;
 
+use std::slice;
+
 use lu::LU;
+
+
+trait AddAssign<RHS> {
+    fn add_assign(&mut self, other: &RHS);
+}
+
+trait SubAssign<RHS> {
+    fn sub_assign(&mut self, other: &RHS);
+}
+
+struct CoorIterator {
+    i: uint,
+    j: uint,
+    rows: uint,
+    cols: uint
+}
+
+impl CoorIterator {
+    fn new(rows: uint, cols: uint) -> CoorIterator {
+        //CoorIterator{coor: (uint::MAX, uint::MAX), rows: rows, cols: cols}
+        CoorIterator{i: 0, j: 0, rows: rows, cols: cols}
+    }
+}
+
+impl Iterator<(uint, uint)> for CoorIterator {
+    fn next(&mut self) -> Option<(uint, uint)> {
+        if self.j == self.cols { // Fell off the end
+            None
+        }
+        else {
+            let val = (self.i, self.j);
+            self.i += 1;
+            if self.i == self.rows {
+                self.i = 0;
+                self.j += 1;
+            }
+            Some(val)
+        }
+    }
+}
+
+fn sum_sq<I: Iterator<f32>>(iter: I) -> f32 {
+    iter.map(|x| x * x).sum()
+}
 
 pub trait MatBase : Index<(uint, uint), f32> {
     fn rows(&self) -> uint;
     fn cols(&self) -> uint;
+    fn len(&self) -> uint;
     fn t<'a>(&'a self) -> Transposed<'a, Self>;
+    fn norm(&self) -> f32;
+
+    //fn index_single<'a>(&'a self, idx: &uint) -> &'a f32;
+
+    fn coor_iter(&self) -> CoorIterator {
+        CoorIterator::new(self.rows(), self.cols())
+    }
 
     // I don't think `block` can be part of a trait until rust itself changes:
     // https://github.com/aturon/rfcs/blob/collections-conventions/text/0000-collection-conventions.md#lack-of-iterator-methods
     //fn block<'a>(&self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, Self>;
+
+    fn same_size<T:MatBase>(&self, other: &T) -> bool{
+        self.rows() == other.rows() && self.cols() == other.cols()
+    }
+
+    // Base method for double dispatch.
+    // Performs: MatBase * f32
+    fn mul_scalar(&self, scalar: &f32) -> Mat {
+        let mut res = Mat::zero(self.rows(), self.cols());
+        for coor in self.coor_iter() {
+            res[coor] = self[coor] * *scalar;
+        }
+        res
+    }
+
+    // Base method for double dispatch.
+    // Performs: MatBase * MatBase
+    fn mul_mat<T:MatBase>(&self, rhs: &T) -> Mat {
+        if self.cols() != rhs.rows() {
+            panic!("Size mismatch in Mul: ({}, {}) * ({}, {})",
+                   self.rows(), self.cols(), rhs.rows(), rhs.cols());
+        }
+
+        Mat::from_fn(
+            self.rows(), rhs.cols(),
+            |i, j|
+            range(0, self.cols()).fold(0.0, |x, k| x + self[(i, k)] * rhs[(k, j)]))
+    }        
+}
+
+fn check_same_size<T:MatBase, U:MatBase, M:fmt::Show>(a: &T, b: &U, text: &M) {
+    if a.rows() != b.rows() || a.cols() != b.cols() {
+        panic!("Different sizes in {}: ({}, {}) vs ({}, {})",
+               text, a.rows(), a.cols(), b.rows(), b.cols());
+    }
 }
 
 pub struct Mat {
@@ -48,6 +139,9 @@ impl Mat {
         Mat{r: r, c: c, data: data}
     }
 
+    pub fn from_fn<F: FnMut<(uint, uint), f32>>(r: uint, c: uint, op: F) -> Mat {
+    }
+
     pub fn ind(&self, i: uint, j: uint) -> uint {
         j * self.r + i
     }
@@ -68,6 +162,27 @@ impl Mat {
 
     pub fn is_square(&self) -> bool {
         self.r == self.c
+    }
+
+    /*
+    pub fn row(&self, i: uint) -> RowView<Mat> {
+        if i >= self.r {
+            panic!("Row index out of bounds");
+        }
+        RowView{m: self, row: i}
+    }
+
+    */
+    pub fn col(&self, j: uint) -> Block<Mat> {
+        if j >= self.c {
+            panic!("Column index out of bounds");
+        }
+        Block{m: self, i0: 0, j0: j, i1: self.rows(), j1: j + 1}
+        //ColView{m: self, col: j}
+    }
+
+    fn iter<'a>(&'a self) -> slice::Items<'a, f32> {
+        self.data.iter()
     }
 
     pub fn lu(&self) -> LU {
@@ -94,8 +209,18 @@ impl Mat {
         }
     }
 
-    fn block<'a>(&'a self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, Mat> {
+    pub fn block<'a>(&'a self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, Mat> {
         Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
+    }
+
+    fn normalize(&mut self) {
+        let n = self.norm();
+        if n == 0.0 {
+            panic!("Cannot normalize when norm is 0");
+        }
+        for el in self.data.iter() {
+            *el /= n;
+        }
     }
 }
 
@@ -107,26 +232,23 @@ impl MatBase for Mat {
     fn cols(&self) -> uint {
         self.c
     }
+
+    fn len(&self) -> uint {
+        self.data.len()
+    }
     
     fn t<'a>(&'a self) -> Transposed<'a, Mat> {
         Transposed{m: self}
     }
 
-    /*
-    pub fn row(&self, i: uint) -> RowView<Mat> {
-        if i >= self.r {
-            panic!("Row index out of bounds");
-        }
-        RowView{m: self, row: i}
+    fn norm(&self) -> f32 {
+        num::Float::sqrt(sum_sq(self.iter().cloned()))
     }
 
-    pub fn col(&self, j: uint) -> ColView<Mat> {
-        if j >= self.c {
-            panic!("Column index out of bounds");
-        }
-        ColView{m: self, col: j}
-    }
-    */
+    /*
+    fn index_single<'a>(&'a self, idx: &uint) -> &'a f32 {
+        self.data.index(idx)
+    }*/
 }
 
 pub struct Transposed<'a, T: MatBase + 'a> {
@@ -141,9 +263,17 @@ impl<'a, T: MatBase + 'a> MatBase for Transposed<'a, T> {
     fn cols(&self) -> uint {
         self.m.rows()
     }
+
+    fn len(&self) -> uint {
+        self.m.len()
+    }
     
     fn t<'r>(&'r self) -> Transposed<'r, Transposed<'a, T>> {
         Transposed{m: self}
+    }
+
+    fn norm(&self) -> f32 {
+        self.m.norm()
     }
 
     /*
@@ -212,6 +342,13 @@ impl Index<(uint, uint), f32> for Mat {
     }
 }
 
+impl IndexMut<(uint, uint), f32> for Mat {
+    fn index_mut<'a>(&'a mut self, &(i, j): &(uint, uint)) -> &'a mut f32 {
+        let idx = self.ind(i, j);
+        self.data.index_mut(&idx)
+    }
+}
+
 
 impl fmt::Show for Mat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -248,19 +385,40 @@ impl Add<Mat, Mat> for Mat {
     }
 }
 
-impl Sub<Mat, Mat> for Mat {
-    fn sub(&self, rhs: &Mat) -> Mat {
-        if self.r != rhs.r || self.c != rhs.c {
-            panic!("Size mismatch in Sub: ({}, {}) vs ({}, {})",
-                   self.r, self.c, rhs.r, rhs.c);
+impl<RHS:MatBase> AddAssign<RHS> for Mat {
+    fn add_assign(&mut self, rhs: &RHS) {
+        if !self.same_size(rhs) {
+            panic!("Size mismatch in AddAssign");
         }
 
-        Mat{r: self.r, c: self.c,
-            data: Vec::from_fn(self.data.len(),
-                               |i| self.data[i] - rhs.data[i])}
+        for coor in self.coor_iter() {
+            self[coor] += rhs[coor];
+        }
     }
 }
 
+impl<'a, T:MatBase, U:MatBase> Sub<T, Mat> for U {
+    fn sub(&self, rhs: &T) -> Mat {
+        check_same_size(self, rhs, &"Sub");
+
+        let mut m = Mat::zero(self.rows(), self.cols());
+        for coor in self.coor_iter() {
+            m[coor] = *self.index(&coor) - rhs[coor];
+        }
+        m
+    }
+}
+
+impl<RHS:MatBase> SubAssign<RHS> for Mat {
+    fn sub_assign(&mut self, rhs: &RHS) {
+        check_same_size(self, rhs, &"SubAssign");
+        for coor in self.coor_iter() {
+            self[coor] -= rhs[coor];
+        }
+    }
+}
+
+/*
 impl Mul<Mat, Mat> for Mat {
     fn mul(&self, rhs: &Mat) -> Mat {
         if self.c != rhs.r {
@@ -281,6 +439,30 @@ impl Mul<Mat, Mat> for Mat {
         Mat{r: self.r, c: rhs.c, data: data}
     }
 }
+*/
+
+impl<T:MatBase, U: LMulMatBase> Mul<U, Mat> for T {
+    fn mul(&self, rhs: &U) -> Mat {
+        rhs.lmul_matbase(self)
+    }
+}
+
+// Trait for double dispatch.  Called for `MatBase * X`
+trait LMulMatBase {
+    fn lmul_matbase<T:MatBase>(&self, &T) -> Mat;
+}
+
+impl LMulMatBase for f32 {
+    fn lmul_matbase<T:MatBase>(&self, rhs: &T) -> Mat {
+        rhs.mul_scalar(self)
+    }
+}
+
+impl<U:MatBase> LMulMatBase for U {
+    fn lmul_matbase<T:MatBase>(&self, rhs: &T) -> Mat {
+        rhs.mul_mat(self)
+    }
+}
 
 
 pub struct Block<'a, T:MatBase + 'a> {
@@ -292,12 +474,22 @@ pub struct Block<'a, T:MatBase + 'a> {
 }
 
 impl<'a, T:MatBase> Block<'a, T> {
-    pub fn rows(&self) -> uint {
-        self.i1 - self.i0
+    fn iter(&'a self) -> BlockIterator<'a, T> {
+        BlockIterator::new(self)
     }
+}
 
-    pub fn cols(&self) -> uint {
-        self.j1 - self.j0
+impl<'a, T:MatBase> Index<uint, f32> for Block<'a, T> {
+    fn index(&self, &idx: &uint) -> &f32 {
+        if self.rows() == 1 {
+            self.index(&(0, idx))
+        }
+        else if self.cols() == 1 {
+            self.index(&(idx, 0))
+        }
+        else {
+            panic!("Single coord indexing only works for vector blocks");
+        }
     }
 }
 
@@ -319,6 +511,53 @@ impl<'a, T:MatBase> fmt::Show for Block<'a, T> {
             try!(write!(f, "\n"))
         }
         write!(f, "")
+    }
+}
+
+struct BlockIterator<'a, T:MatBase + 'a> {
+    m: &'a Block<'a, T>,
+    idx: uint
+}
+
+impl<'a, T:MatBase> BlockIterator<'a, T> {
+    pub fn new<'r>(m: &'r Block<T>) -> BlockIterator<'r, T> {
+        BlockIterator{m: m, idx: 0}
+    }
+}
+
+impl<'a, T:MatBase> Iterator<f32> for BlockIterator<'a, T> {
+    fn next(&mut self) -> Option<f32> {
+        if self.idx == self.m.rows() * self.m.cols() {
+            None
+        }
+        else {
+            let i = self.idx % self.m.rows();
+            let j = self.idx / self.m.rows();
+            self.idx += 1;
+            Some(*self.m.index(&(i, j)))
+        }
+    }
+}
+
+impl<'a, T:MatBase> MatBase for Block<'a, T> {
+    fn rows(&self) -> uint {
+        self.i1 - self.i0
+    }
+
+    fn cols(&self) -> uint {
+        self.j1 - self.j0
+    }
+
+    fn len(&self) -> uint {
+        self.rows() * self.cols()
+    }
+
+    fn norm(&self) -> f32 {
+        num::Float::sqrt(sum_sq(self.iter()))
+    }
+
+    fn t(&self) -> Transposed<Block<'a, T>> {
+        Transposed{m: self}
     }
 }
 
@@ -565,7 +804,6 @@ fn test_block() {
                                            12.0, 14.0, 16.0]), 0.00001);
 }
 
-/*
 #[test]
 fn test_col_view() {
     let a = Mat::from_slice(
@@ -582,6 +820,7 @@ fn test_col_view() {
     assert_eq!(c2[2], 22.0);
 }
 
+/*
 #[test]
 fn test_transpose_vecs() {
     let a = Mat::from_slice(3, 1, &[2.0, 4.0, 6.0]);
@@ -597,3 +836,5 @@ fn test_transpose_vecs() {
                      0.00001);
 }
 */
+
+// TODO: norm of a block (to verify iteration)

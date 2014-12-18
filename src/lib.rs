@@ -12,3 +12,4 @@ pub use lu::LU;
 mod assert_macros;
 mod base;
 mod lu;
+mod qr;
