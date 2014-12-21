@@ -20,35 +20,41 @@ impl QR {
 
         let mut e1 = Mat::zero(R.rows(), 1);
 
-        // All I want for christmas is a smarter borrow checker
-        let w = {
-            let x = R.col(0);
-            e1[(0, 0)] = x.norm();
-            println!("|x| * e = \n{}", e1);
-            let mut v = x - e1;
-            println!("v = \n{}", v);
-            v.normalize();
-            v
-        };
+        for j in range(0, R.cols()) {
+            println!("Iteration {}", j);
 
-        println!("w = \n{}", w);
+            let mut Rb = R.block(j, j, R.rows(), R.cols());
 
-        let H = Mat::ident(R.rows()) - &w * &w.t() * 2.0;
-        println!("H = \n{}", H);
+            // All I want for christmas is a smarter borrow checker
+            let w = {
+                let x = Rb.col(j);
+                e1[(0, 0)] = x.norm();
+                println!("|x| * e = \n{}", e1);
+                let mut v = x - &e1;
+                println!("v = \n{}", v);
+                v.normalize();
+                v
+            };
 
-        // H := I - 2ww'
-        // R := H * R
-        let tmp = &w.t() * &R;  // Borrow checker limitations (for R)
-        R.sub_assign(&w * tmp * 2.0);
-        //R.block_lr() -= 2 * v * (v.t() * R.block_lr());
+            println!("w = \n{}", w);
 
-        // Q := Q * H
-        let tmp = &Q * &w;
-        Q.sub_assign(tmp * w.t() * 2.0);
+            let H = Mat::ident(Rb.rows()) - &w * &w.t() * 2.0;
+            println!("H = \n{}", H);
 
-        println!("Q after:\n{}", Q);
-        println!("R after:\n{}", R);
-        println!("Q*R after:\n{}", &Q * &R);
+            // H := I - 2ww'
+            // R := H * R
+            let tmp = &w.t() * &Rb;  // Borrow checker limitations (for R)
+            Rb.sub_assign(&w * tmp * 2.0);
+            //R.block_lr() -= 2 * v * (v.t() * R.block_lr());
+
+            // Q := Q * H
+            let tmp = &Q * &w;
+            Q.sub_assign(tmp * w.t() * 2.0);
+
+            println!("Q after:\n{}", Q);
+            println!("R after:\n{}", R);
+            println!("Q*R after:\n{}", &Q * &R);
+        }
 
 
         // A = QR
