@@ -17,7 +17,7 @@ macro_rules! assert_vec_near(
             }
         }
     }
-)
+);
 
 #[macro_export]
 macro_rules! assert_mat_near(
@@ -40,5 +40,5 @@ macro_rules! assert_mat_near(
             }
         }
     }
-)
+);
 

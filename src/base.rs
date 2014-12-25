@@ -51,11 +51,11 @@ fn sum_sq<I: Iterator<f32>>(iter: I) -> f32 {
     iter.map(|x| x * x).sum()
 }
 
-pub trait MatBase : Index<(uint, uint), f32> + IndexMut<(uint, uint), f32> {
+pub trait MatBase : Index<(uint, uint), f32> {
     fn rows(&self) -> uint;
     fn cols(&self) -> uint;
     fn len(&self) -> uint;
-    fn t<'a>(&'a mut self) -> Transposed<'a, Self>;
+    fn t<'a>(&'a self) -> Transposed<'a, &Self>;
     fn norm(&self) -> f32;
 
     fn coor_iter(&self) -> CoorIterator {
@@ -69,6 +69,10 @@ pub trait MatBase : Index<(uint, uint), f32> + IndexMut<(uint, uint), f32> {
     fn same_size<T:MatBase>(&self, other: &T) -> bool{
         self.rows() == other.rows() && self.cols() == other.cols()
     }
+}
+
+pub trait MatBaseMut : MatBase + IndexMut<(uint, uint), f32> {
+    //fn t_mut<'a>(&'a mut self) -> Transposed<'a, &mut Self>;
 }
 
 fn check_same_size<T:MatBase, U:MatBase, M:fmt::Show>(a: &T, b: &U, text: &M) {
@@ -154,7 +158,7 @@ impl Mat {
     }
 
     */
-    pub fn col(&mut self, j: uint) -> Block<Mat> {
+    pub fn col(&self, j: uint) -> Block<&Mat> {
         if j >= self.c {
             panic!("Column index out of bounds");
         }
@@ -162,7 +166,7 @@ impl Mat {
         Block{m: self, i0: 0, j0: j, i1: rows, j1: j + 1}
     }
 
-    fn iter<'a>(&'a self) -> slice::Items<'a, f32> {
+    pub fn iter(&self) -> slice::Iter<f32> {
         self.data.iter()
     }
 
@@ -190,7 +194,7 @@ impl Mat {
         }
     }
 
-    pub fn block<'a>(&'a mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, Mat> {
+    pub fn block<'a>(&'a self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &Mat> {
         if (i0 < 0 || i0 >= i1 || i1 > self.rows() ||
             j0 < 0 || j0 >= j1 || j1 > self.cols())
         {
@@ -224,7 +228,7 @@ impl MatBase for Mat {
         self.data.len()
     }
 
-    fn t<'a>(&'a mut self) -> Transposed<'a, Mat> {
+    fn t<'a>(&'a self) -> Transposed<'a, &Mat> {
         Transposed{m: self}
     }
 
@@ -233,56 +237,8 @@ impl MatBase for Mat {
     }
 }
 
-pub struct Transposed<'a, T: MatBase + 'a> {
-    m: &'a mut T
+impl MatBaseMut for Mat {
 }
-
-impl<'a, T: MatBase + 'a> MatBase for Transposed<'a, T> {
-    fn rows(&self) -> uint {
-        self.m.cols()
-    }
-
-    fn cols(&self) -> uint {
-        self.m.rows()
-    }
-
-    fn len(&self) -> uint {
-        self.m.len()
-    }
-
-    fn t<'r>(&'r mut self) -> Transposed<'r, Transposed<'a, T>> {
-        Transposed{m: self}
-    }
-
-    fn norm(&self) -> f32 {
-        self.m.norm()
-    }
-}
-
-impl<'a, T:MatBase + 'a> Index<(uint, uint), f32> for Transposed<'a, T> {
-    fn index<'r>(&'r self, &(i, j): &(uint, uint)) -> &f32 {
-        self.m.index(&(j, i))
-    }
-}
-
-impl<'a, T:MatBase + 'a> IndexMut<(uint, uint), f32> for Transposed<'a, T> {
-    fn index_mut<'r>(&'r mut self, &(i, j): &(uint, uint)) -> &'r mut f32 {
-        self.m.index_mut(&(j, i))
-    }
-}
-
-impl<'a, T:MatBase + 'a> fmt::Show for Transposed<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for i in range(0, self.rows()) {
-            for j in range(0, self.cols()) {
-                try!(write!(f, "{}  ", self[(i, j)]))
-            }
-            try!(write!(f, "\n"))
-        }
-        write!(f, "")
-    }
-}
-
 
 impl Clone for Mat {
     fn clone(&self) -> Mat {
@@ -387,7 +343,7 @@ impl<'b, LHS:MatBase, RHS:MatBase> Sub<&'b RHS, Mat> for LHS {
     }
 }
 
-impl<LHS:MatBase, RHS:MatBase> SubAssign<RHS> for LHS {
+impl<LHS:MatBaseMut, RHS:MatBase> SubAssign<RHS> for LHS {
     fn sub_assign(&mut self, rhs: RHS) {
         check_same_size(self, &rhs, &"SubAssign");
         for coor in self.coor_iter() {
@@ -442,20 +398,76 @@ impl<LHS:MatBase> Mul<f32, Mat> for LHS {
 }
 
 
-pub struct Block<'a, T:MatBase + 'a> {
-    m: &'a mut T,
+// TODO: Would be nice to specify that T is `&MatBase` or `&mut MatBase`
+pub struct Transposed<'a, T> {
+    m: T
+}
+
+impl<'a, T:MatBase + 'a> Transposed<'a, &'a T> {}
+impl<'a, T:MatBaseMut + 'a> Transposed<'a, &'a mut T> {}
+
+impl<'a, T: MatBase + 'a> MatBase for Transposed<'a, &'a T> {
+    fn rows(&self) -> uint {
+        self.m.cols()
+    }
+
+    fn cols(&self) -> uint {
+        self.m.rows()
+    }
+
+    fn len(&self) -> uint {
+        self.m.len()
+    }
+
+    fn norm(&self) -> f32 {
+        self.m.norm()
+    }
+
+    fn t(&self) -> Transposed<'a, &Transposed<'a, &'a T>> {
+        Transposed{m: self}
+    }
+}
+
+impl<'a, T:MatBase + 'a> Index<(uint, uint), f32> for Transposed<'a, &'a T> {
+    fn index<'r>(&'r self, &(i, j): &(uint, uint)) -> &f32 {
+        self.m.index(&(j, i))
+    }
+}
+
+impl<'a, T:MatBaseMut + 'a> IndexMut<(uint, uint), f32> for Transposed<'a, &'a mut T> {
+    fn index_mut<'r>(&'r mut self, &(i, j): &(uint, uint)) -> &'r mut f32 {
+        self.m.index_mut(&(j, i))
+    }
+}
+
+impl<'a, T:MatBase + 'a> fmt::Show for Transposed<'a, &'a T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for i in range(0, self.rows()) {
+            for j in range(0, self.cols()) {
+                try!(write!(f, "{}  ", self[(i, j)]))
+            }
+            try!(write!(f, "\n"))
+        }
+        write!(f, "")
+    }
+}
+
+
+pub struct Block<'a, T> {
+    m: T,
     i0: uint,
     j0: uint,
     i1: uint,
     j1: uint
 }
 
-impl<'a, T:MatBase> Block<'a, T> {
-    fn iter(&'a self) -> BlockIterator<'a, T> {
-        BlockIterator::new(self)
+impl<'a, T:MatBase> Block<'a, &'a T> {
+    pub fn iter(&'a self) -> BlockIterator<'a, T> {
+        //BlockIterator::new(self)
+        BlockIterator{m: self, idx: 0}
     }
 
-    pub fn block<'b>(&'b mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, T> {
+    pub fn block<'b>(&'b self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b T> {
         if (i0 < 0 || i0 >= i1 || i1 > self.rows() ||
             j0 < 0 || j0 >= j1 || j1 > self.cols())
         {
@@ -468,7 +480,7 @@ impl<'a, T:MatBase> Block<'a, T> {
               i1: self.i0 + i1, j1: self.j0 + j1}
     }
 
-    pub fn col(&mut self, j: uint) -> Block<T> {
+    pub fn col(&self, j: uint) -> Block<&T> {
         if j >= self.cols() {
             panic!("Column index out of bounds");
         }
@@ -478,7 +490,8 @@ impl<'a, T:MatBase> Block<'a, T> {
     }
 }
 
-impl<'a, T:MatBase> Index<uint, f32> for Block<'a, T> {
+/* NOCHECKIN: remove
+impl<'a, T:MatBase> Index<uint, f32> for Block<'a, &'a T> {
     fn index(&self, &idx: &uint) -> &f32 {
         if self.rows() == 1 {
             self.index(&(0, idx))
@@ -490,18 +503,25 @@ impl<'a, T:MatBase> Index<uint, f32> for Block<'a, T> {
             panic!("Single coord indexing only works for vector blocks");
         }
     }
-}
+}*/
 
-impl<'a, T:MatBase> Index<(uint, uint), f32> for Block<'a, T> {
-    fn index(&self, &(i, j): &(uint, uint)) -> &f32 {
-        if i >= self.rows() || j >= self.cols() {
-            panic!("Index is outside the range of the block");
+//impl<'a, T:MatBase> Index<(uint, uint), f32> for Block<'a, &'a T> {
+macro_rules! block_index_impl (
+    ($Block:ty) => (
+        impl<'a, T:MatBase> Index<(uint, uint), f32> for $Block {
+            fn index(&self, &(i, j): &(uint, uint)) -> &f32 {
+                if i >= self.rows() || j >= self.cols() {
+                    panic!("Index is outside the range of the block");
+                }
+                self.m.index(&(i + self.i0, j + self.j0))
+            }
         }
-        self.m.index(&(i + self.i0, j + self.j0))
-    }
-}
-
-impl<'a, T:MatBase + IndexMut<(uint, uint), f32>> IndexMut<(uint, uint), f32> for Block<'a, T> {
+    )
+);
+block_index_impl!(Block<'a, &'a T>);
+block_index_impl!(Block<'a, &'a mut T>);
+    
+impl<'a, T:MatBaseMut> IndexMut<(uint, uint), f32> for Block<'a, &'a mut T> {
     fn index_mut(&mut self, &(i, j): &(uint, uint)) -> &mut f32 {
         if i >= self.rows() || j >= self.cols() {
             panic!("Index is outside the range of the block");
@@ -510,7 +530,7 @@ impl<'a, T:MatBase + IndexMut<(uint, uint), f32>> IndexMut<(uint, uint), f32> fo
     }
 }
 
-impl<'a, T:MatBase> fmt::Show for Block<'a, T> {
+impl<'a, T:MatBase> fmt::Show for Block<'a, &'a T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for i in range(0, self.rows()) {
             for j in range(0, self.cols()) {
@@ -523,12 +543,12 @@ impl<'a, T:MatBase> fmt::Show for Block<'a, T> {
 }
 
 struct BlockIterator<'a, T:MatBase + 'a> {
-    m: &'a Block<'a, T>,
+    m: &'a Block<'a, &'a T>,
     idx: uint
 }
 
 impl<'a, T:MatBase> BlockIterator<'a, T> {
-    pub fn new<'r>(m: &'r Block<T>) -> BlockIterator<'r, T> {
+    pub fn new<'r>(m: &'r Block<'r, &'r T>) -> BlockIterator<'r, T> {
         BlockIterator{m: m, idx: 0}
     }
 }
@@ -547,27 +567,41 @@ impl<'a, T:MatBase> Iterator<f32> for BlockIterator<'a, T> {
     }
 }
 
-impl<'a, T:MatBase> MatBase for Block<'a, T> {
-    fn rows(&self) -> uint {
-        self.i1 - self.i0
-    }
+//impl<'a, T:MatBase> MatBase for Block<'a, &'a T> {
+macro_rules! block_matbase_impl (
+    ($Block:ty) => (
+        impl<'a, T:MatBase> MatBase for $Block {
+            fn rows(&self) -> uint {
+                self.i1 - self.i0
+            }
 
-    fn cols(&self) -> uint {
-        self.j1 - self.j0
-    }
+            fn cols(&self) -> uint {
+                self.j1 - self.j0
+            }
 
-    fn len(&self) -> uint {
-        self.rows() * self.cols()
-    }
+            fn len(&self) -> uint {
+                self.rows() * self.cols()
+            }
 
-    fn norm(&self) -> f32 {
-        num::Float::sqrt(sum_sq(self.iter()))
-    }
+            fn norm<'b>(&'b self) -> f32 {
+                // NOCHECKIN
+                //num::Float::sqrt(sum_sq(self.iter()))
+                let iterator = self.iter();
+                32.0
+            }
+            /*fn norm<'b>(&'b self) -> f32 {
+                let iterator : BlockIterator<'b, T> = (*self).iter();
+                num::Float::sqrt(sum_sq(self.iter()))
+            }*/
 
-    fn t(&mut self) -> Transposed<Block<'a, T>> {
-        Transposed{m: self}
-    }
-}
+            fn t(&self) -> Transposed<&Self> {
+                Transposed{m: self}
+            }
+        }
+    )
+);
+block_matbase_impl!(Block<'a, &'a T>);
+block_matbase_impl!(Block<'a, &'a mut T>);
 
 
 pub struct Permutation {
