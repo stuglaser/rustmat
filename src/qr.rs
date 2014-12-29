@@ -1,4 +1,4 @@
-use base::{MatBase, Mat, SubAssign};
+use base::{MatBase, Mat, SubAssign, BlockTrait};
 
 struct QR {
     // TODO: Store in a single mat
@@ -20,10 +20,12 @@ impl QR {
 
         let mut e1 = Mat::zero(R.rows(), 1);
 
-        for j in range(0, R.cols()) {
+        for j in range(0, R.cols()) {{
             println!("Iteration {}", j);
 
-            let mut Rb = R.block(j, j, R.rows(), R.cols());
+            let rows = R.rows();
+            let cols = R.cols();
+            let mut Rb = R.block_mut(j, j, rows, cols);
 
             // All I want for christmas is a smarter borrow checker
             let w = {
@@ -51,6 +53,7 @@ impl QR {
             let tmp = &Q * &w;
             Q.sub_assign(tmp * w.t() * 2.0);
 
+        }
             println!("Q after:\n{}", Q);
             println!("R after:\n{}", R);
             println!("Q*R after:\n{}", &Q * &R);

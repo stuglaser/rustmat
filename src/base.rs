@@ -1,5 +1,6 @@
 use std::fmt;
 use std::iter::AdditiveIterator;
+use std::kinds::marker;
 use std::num;
 use std::ptr;
 
@@ -204,6 +205,16 @@ impl Mat {
         Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
     }
 
+    pub fn block_mut<'a>(&'a mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &mut Mat> {
+        if (i0 < 0 || i0 >= i1 || i1 > self.rows() ||
+            j0 < 0 || j0 >= j1 || j1 > self.cols())
+        {
+            panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
+                  i0, j0, i1, j1, self.rows(), self.cols());
+        }
+        Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
+    }
+
     pub fn normalize(&mut self) {
         let n = self.norm();
         if n == 0.0 {
@@ -355,13 +366,6 @@ impl<LHS:MatBaseMut, RHS:MatBase> SubAssign<RHS> for LHS {
 // lhs * rhs
 impl<LHS:MatBase, RHS:MatBase> Mul<RHS, Mat> for LHS {
     fn mul(self, rhs:RHS) -> Mat {
-        /*
-        Mat::from_fn(
-            self.rows(), rhs.cols(),
-            |i, j|
-            range(0, self.cols()).fold(0.0, |x, k| x + self[(i, k)] * rhs[(k, j)]))
-        NOCHECKIN
-         */
         (&self).mul(&rhs)
     }
 }
@@ -369,12 +373,6 @@ impl<LHS:MatBase, RHS:MatBase> Mul<RHS, Mat> for LHS {
 // &lhs * rhs
 impl<'a, LHS:MatBase + 'a, RHS:MatBase> Mul<RHS, Mat> for &'a LHS {
     fn mul(self, rhs:RHS) -> Mat {
-        /*
-        Mat::from_fn(
-            self.rows(), rhs.cols(),
-            |i, j|
-            range(0, self.cols()).fold(0.0, |x, k| x + self[(i, k)] * rhs[(k, j)]))
-        NOCHECKIN*/
         self.mul(&rhs)
     }
 }
@@ -461,36 +459,63 @@ pub struct Block<'a, T> {
     j1: uint
 }
 
-impl<'a, T:MatBase> Block<'a, &'a T> {
-    pub fn iter(&'a self) -> BlockIterator<'a, T> {
-        //BlockIterator::new(self)
-        BlockIterator{m: self, idx: 0}
+// Block needs be implemented for `&MatBase` and for `&mut MatBase`.
+// The impl can only implement one, so these shared methods need to be
+// gathered into a trait.  `BlockTrait` contains all methods that
+// would have been implemented in the impl.
+pub trait BlockTrait : MatBase {
+    fn iter<'b>(&'b self) -> BlockIterator<'b, &'b Self> {
+        BlockIterator::new(self)
     }
 
-    pub fn block<'b>(&'b self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b T> {
-        if (i0 < 0 || i0 >= i1 || i1 > self.rows() ||
-            j0 < 0 || j0 >= j1 || j1 > self.cols())
-        {
-            panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
-                  i0, j0, i1, j1, self.rows(), self.cols());
-        }
-
-        Block{m: self.m,
-              i0: self.i0 + i0, j0: self.j0 + j0,
-              i1: self.i0 + i1, j1: self.j0 + j1}
-    }
-
-    pub fn col(&self, j: uint) -> Block<&T> {
-        if j >= self.cols() {
-            panic!("Column index out of bounds");
-        }
-        Block{m: self.m,
-              i0: self.i0, j0: self.j0 + j,
-              i1: self.i1, j1: self.j0 + j + 1}
-    }
+    fn col<'b>(&'b self, j: uint) -> Block<'b, &'b Self>;
 }
 
-/* NOCHECKIN: remove
+// impl MatBase[Mut] for Block
+macro_rules! block_impl {
+    ($Base:ident, $Block:ty) => {
+        impl<'a, T:$Base> BlockTrait for $Block {
+            fn col<'b>(&'b self, j: uint) -> Block<'b, &'b Self> {
+                if j >= self.cols() {
+                    panic!("Column index out of bounds");
+                }
+                //Block{m: self.m,
+                //      i0: self.i0, j0: self.j0 + j,
+                //      i1: self.i1, j1: self.j0 + j + 1}
+                Block{m: self,
+                      i0: 0, j0: j,
+                      i1: self.rows(), j1: j + 1}
+            }
+        }
+    }
+}
+block_impl!(MatBase, Block<'a, &'a T>);
+block_impl!(MatBaseMut, Block<'a, &'a mut T>);
+
+/* TODO: old implementation of Block.  Move these methods into BlockTrait
+macro_rules! block_impl (
+    ($Block:ty) => (
+        impl<'a, T:MatBase> $Block {
+            pub fn block<'b>(&'b self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b T> {
+                if (i0 < 0 || i0 >= i1 || i1 > self.rows() ||
+                    j0 < 0 || j0 >= j1 || j1 > self.cols())
+                {
+                    panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
+                           i0, j0, i1, j1, self.rows(), self.cols());
+                }
+
+                Block{m: self.m,
+                      i0: self.i0 + i0, j0: self.j0 + j0,
+                      i1: self.i0 + i1, j1: self.j0 + j1}
+            }
+
+        }
+    )
+);
+block_impl!(Block<'a, &'a T>);
+block_impl!(Block<'a, &'a mut T>);
+*/
+        
 impl<'a, T:MatBase> Index<uint, f32> for Block<'a, &'a T> {
     fn index(&self, &idx: &uint) -> &f32 {
         if self.rows() == 1 {
@@ -503,12 +528,12 @@ impl<'a, T:MatBase> Index<uint, f32> for Block<'a, &'a T> {
             panic!("Single coord indexing only works for vector blocks");
         }
     }
-}*/
+}
 
 //impl<'a, T:MatBase> Index<(uint, uint), f32> for Block<'a, &'a T> {
 macro_rules! block_index_impl (
-    ($Block:ty) => (
-        impl<'a, T:MatBase> Index<(uint, uint), f32> for $Block {
+    ($Base:ident, $Block:ty) => (
+        impl<'a, T:$Base> Index<(uint, uint), f32> for $Block {
             fn index(&self, &(i, j): &(uint, uint)) -> &f32 {
                 if i >= self.rows() || j >= self.cols() {
                     panic!("Index is outside the range of the block");
@@ -518,9 +543,9 @@ macro_rules! block_index_impl (
         }
     )
 );
-block_index_impl!(Block<'a, &'a T>);
-block_index_impl!(Block<'a, &'a mut T>);
-    
+block_index_impl!(MatBase, Block<'a, &'a T>);
+block_index_impl!(MatBaseMut, Block<'a, &'a mut T>);
+
 impl<'a, T:MatBaseMut> IndexMut<(uint, uint), f32> for Block<'a, &'a mut T> {
     fn index_mut(&mut self, &(i, j): &(uint, uint)) -> &mut f32 {
         if i >= self.rows() || j >= self.cols() {
@@ -542,18 +567,20 @@ impl<'a, T:MatBase> fmt::Show for Block<'a, &'a T> {
     }
 }
 
-struct BlockIterator<'a, T:MatBase + 'a> {
-    m: &'a Block<'a, &'a T>,
-    idx: uint
+// No longer just for blocks.  Now for all MatBase things
+pub struct BlockIterator<'a, T: 'a> {
+    m: T,
+    idx: uint,
+    marker: marker::ContravariantLifetime<'a>
 }
 
-impl<'a, T:MatBase> BlockIterator<'a, T> {
-    pub fn new<'r>(m: &'r Block<'r, &'r T>) -> BlockIterator<'r, T> {
-        BlockIterator{m: m, idx: 0}
+impl<'a, T:MatBase> BlockIterator<'a, &'a T> {
+    pub fn new<'r>(m: &'r T) -> BlockIterator<'r, &'r T> {
+        BlockIterator{m: m, idx: 0, marker: marker::ContravariantLifetime::<'r>}
     }
 }
 
-impl<'a, T:MatBase> Iterator<f32> for BlockIterator<'a, T> {
+impl<'a, T:MatBase> Iterator<f32> for BlockIterator<'a, &'a T> {
     fn next(&mut self) -> Option<f32> {
         if self.idx == self.m.rows() * self.m.cols() {
             None
@@ -567,10 +594,10 @@ impl<'a, T:MatBase> Iterator<f32> for BlockIterator<'a, T> {
     }
 }
 
-//impl<'a, T:MatBase> MatBase for Block<'a, &'a T> {
 macro_rules! block_matbase_impl (
-    ($Block:ty) => (
-        impl<'a, T:MatBase> MatBase for $Block {
+    ($Base: ident, $Block:ty) => (
+        impl<'a, T:$Base> MatBase for $Block {
+        //impl<'a, T: $Base> MatBase for $Block {
             fn rows(&self) -> uint {
                 self.i1 - self.i0
             }
@@ -584,15 +611,8 @@ macro_rules! block_matbase_impl (
             }
 
             fn norm<'b>(&'b self) -> f32 {
-                // NOCHECKIN
-                //num::Float::sqrt(sum_sq(self.iter()))
-                let iterator = self.iter();
-                32.0
-            }
-            /*fn norm<'b>(&'b self) -> f32 {
-                let iterator : BlockIterator<'b, T> = (*self).iter();
                 num::Float::sqrt(sum_sq(self.iter()))
-            }*/
+            }
 
             fn t(&self) -> Transposed<&Self> {
                 Transposed{m: self}
@@ -600,8 +620,10 @@ macro_rules! block_matbase_impl (
         }
     )
 );
-block_matbase_impl!(Block<'a, &'a T>);
-block_matbase_impl!(Block<'a, &'a mut T>);
+block_matbase_impl!(MatBase, Block<'a, &'a T>);
+block_matbase_impl!(MatBaseMut, Block<'a, &'a mut T>);
+
+impl<'a, T:MatBaseMut> MatBaseMut for Block<'a, &'a mut T> {}
 
 
 pub struct Permutation {
@@ -877,6 +899,16 @@ fn test_transpose_vecs() {
                                        12.0, 24.0, 36.0]),
                      0.00001);
 }
-*/
+ */
+
+#[test]
+fn test_foo() {
+    let a = Mat::from_slice(3, 3,
+                            &[4.0, 8.0, 12.0,
+                              8.0, 16.0, 24.0,
+                              12.0, 24.0, 36.0]);
+    let b = a.block(0, 0, 2, 2);
+    let col = b.col(0);
+}
 
 // TODO: norm of a block (to verify iteration)
