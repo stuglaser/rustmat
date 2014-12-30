@@ -196,9 +196,7 @@ impl Mat {
     }
 
     pub fn block<'a>(&'a self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &Mat> {
-        if (i0 < 0 || i0 >= i1 || i1 > self.rows() ||
-            j0 < 0 || j0 >= j1 || j1 > self.cols())
-        {
+        if i0 >= i1 || i1 > self.rows() || j0 >= j1 || j1 > self.cols() {
             panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
                   i0, j0, i1, j1, self.rows(), self.cols());
         }
@@ -206,9 +204,7 @@ impl Mat {
     }
 
     pub fn block_mut<'a>(&'a mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &mut Mat> {
-        if (i0 < 0 || i0 >= i1 || i1 > self.rows() ||
-            j0 < 0 || j0 >= j1 || j1 > self.cols())
-        {
+        if i0 >= i1 || i1 > self.rows() || j0 >= j1 || j1 > self.cols() {
             panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
                   i0, j0, i1, j1, self.rows(), self.cols());
         }
@@ -367,7 +363,6 @@ impl<'a, LHS:MatBase + 'a, RHS:MatBase> Mul<RHS, Mat> for &'a LHS {
 // &lhs * &rhs
 impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS, Mat> for &'a LHS {
     fn mul(self, rhs: &RHS) -> Mat {
-        println!("Mul:\n{}\nX\n{}", self, rhs);
         Mat::from_fn(
             self.rows(), rhs.cols(),
             |i, j|
@@ -446,6 +441,7 @@ pub trait BlockTrait : MatBase {
     }
 
     fn col<'b>(&'b self, j: uint) -> Block<'b, &'b Self>;
+    fn block<'b>(&'b self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b Self>;
 }
 
 // impl MatBase[Mut] for Block
@@ -462,6 +458,14 @@ macro_rules! block_impl {
                 Block{m: self,
                       i0: 0, j0: j,
                       i1: self.rows(), j1: j + 1}
+            }
+
+            fn block<'b>(&'b self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b Self> {
+                if i0 >= i1 || i1 > self.rows() || j0 >= j1 || j1 > self.cols() {
+                    panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
+                           i0, j0, i1, j1, self.rows(), self.cols());
+                }
+                Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
             }
         }
     }
