@@ -52,7 +52,7 @@ fn sum_sq<I: Iterator<f32>>(iter: I) -> f32 {
     iter.map(|x| x * x).sum()
 }
 
-pub trait MatBase : Index<(uint, uint), f32> {
+pub trait MatBase : Index<(uint, uint), f32> + fmt::Show {
     fn rows(&self) -> uint;
     fn cols(&self) -> uint;
     fn len(&self) -> uint;
@@ -288,19 +288,6 @@ impl IndexMut<(uint, uint), f32> for Mat {
     }
 }
 
-
-impl fmt::Show for Mat {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for i in range(0, self.r) {
-            for j in range(0, self.c) {
-                try!(write!(f, "{}  ", self.at(i, j)))
-            }
-            try!(write!(f, "\n"))
-        }
-        write!(f, "")
-    }
-}
-
 impl PartialEq for Mat {
     fn eq(&self, other: &Mat) -> bool {
         if self.r != other.r || self.c != other.c {
@@ -380,6 +367,7 @@ impl<'a, LHS:MatBase + 'a, RHS:MatBase> Mul<RHS, Mat> for &'a LHS {
 // &lhs * &rhs
 impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS, Mat> for &'a LHS {
     fn mul(self, rhs: &RHS) -> Mat {
+        println!("Mul:\n{}\nX\n{}", self, rhs);
         Mat::from_fn(
             self.rows(), rhs.cols(),
             |i, j|
@@ -438,17 +426,6 @@ impl<'a, T:MatBaseMut + 'a> IndexMut<(uint, uint), f32> for Transposed<'a, &'a m
     }
 }
 
-impl<'a, T:MatBase + 'a> fmt::Show for Transposed<'a, &'a T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for i in range(0, self.rows()) {
-            for j in range(0, self.cols()) {
-                try!(write!(f, "{}  ", self[(i, j)]))
-            }
-            try!(write!(f, "\n"))
-        }
-        write!(f, "")
-    }
-}
 
 
 pub struct Block<'a, T> {
@@ -474,7 +451,7 @@ pub trait BlockTrait : MatBase {
 // impl MatBase[Mut] for Block
 macro_rules! block_impl {
     ($Base:ident, $Block:ty) => {
-        impl<'a, T:$Base> BlockTrait for $Block {
+        impl<'a, T:$Base + 'a> BlockTrait for $Block {
             fn col<'b>(&'b self, j: uint) -> Block<'b, &'b Self> {
                 if j >= self.cols() {
                     panic!("Column index out of bounds");
@@ -555,17 +532,6 @@ impl<'a, T:MatBaseMut> IndexMut<(uint, uint), f32> for Block<'a, &'a mut T> {
     }
 }
 
-impl<'a, T:MatBase> fmt::Show for Block<'a, &'a T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for i in range(0, self.rows()) {
-            for j in range(0, self.cols()) {
-                try!(write!(f, "{}  ", self[(i, j)]))
-            }
-            try!(write!(f, "\n"))
-        }
-        write!(f, "")
-    }
-}
 
 // No longer just for blocks.  Now for all MatBase things
 pub struct BlockIterator<'a, T: 'a> {
@@ -596,7 +562,7 @@ impl<'a, T:MatBase> Iterator<f32> for BlockIterator<'a, &'a T> {
 
 macro_rules! block_matbase_impl (
     ($Base: ident, $Block:ty) => (
-        impl<'a, T:$Base> MatBase for $Block {
+        impl<'a, T:$Base + 'a> MatBase for $Block {
         //impl<'a, T: $Base> MatBase for $Block {
             fn rows(&self) -> uint {
                 self.i1 - self.i0
@@ -623,7 +589,37 @@ macro_rules! block_matbase_impl (
 block_matbase_impl!(MatBase, Block<'a, &'a T>);
 block_matbase_impl!(MatBaseMut, Block<'a, &'a mut T>);
 
-impl<'a, T:MatBaseMut> MatBaseMut for Block<'a, &'a mut T> {}
+impl<'a, T:MatBaseMut + 'a> MatBaseMut for Block<'a, &'a mut T> {}
+
+
+fn show_matbase<T:MatBase>(mat: &T, f: &mut fmt::Formatter) -> fmt::Result {
+    for i in range(0, mat.rows()) {
+        for j in range(0, mat.cols()) {
+            try!(write!(f, "{}  ", mat[(i, j)]))
+        }
+        try!(write!(f, "\n"))
+    }
+    write!(f, "")
+}
+
+impl fmt::Show for Mat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        show_matbase(self, f)
+    }
+}
+
+macro_rules! impl_show_for_matbase {
+    ($Base:ident, $Mat:ty) => {
+        impl<'a, T:$Base + 'a> fmt::Show for $Mat {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                show_matbase(self, f)
+            }
+        }
+    }
+}
+impl_show_for_matbase!(MatBase, Transposed<'a, &'a T>);
+impl_show_for_matbase!(MatBase, Block<'a, &'a T>);
+impl_show_for_matbase!(MatBaseMut, Block<'a, &'a mut T>);
 
 
 pub struct Permutation {
