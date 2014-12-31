@@ -70,6 +70,15 @@ pub trait MatBase : Index<(uint, uint), f32> + fmt::Show {
     fn same_size<T:MatBase>(&self, other: &T) -> bool{
         self.rows() == other.rows() && self.cols() == other.cols()
     }
+
+    fn is_zero(&self) -> bool {
+        for coor in self.coor_iter() {
+            if self[coor] != 0.0 {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 pub trait MatBaseMut : MatBase + IndexMut<(uint, uint), f32> {
@@ -150,15 +159,6 @@ impl Mat {
         self.r == self.c
     }
 
-    /*
-    pub fn row(&self, i: uint) -> RowView<Mat> {
-        if i >= self.r {
-            panic!("Row index out of bounds");
-        }
-        RowView{m: self, row: i}
-    }
-
-    */
     pub fn col(&self, j: uint) -> Block<&Mat> {
         if j >= self.c {
             panic!("Column index out of bounds");
@@ -260,17 +260,6 @@ impl Fn<(uint, uint), f32> for Mat {
     }
 }
 
-/*
-impl<'a> FnMut<(uint, uint), &'a f32> for Mat {
-    extern "rust-call" fn call_mut<'a>(&'a mut self, args: (uint, uint)) -> &'a f32 {
-        let (i, j) = args;
-        let foo: &mut f32 = &self.data[self.ind(i, j)];
-        //&self.data[self.ind(i, j)]
-        foo
-    }
-}
-*/
-
 impl Index<(uint, uint), f32> for Mat {
     fn index(&self, &(i, j): &(uint, uint)) -> &f32 {
         self.data.index(&self.ind(i, j))
@@ -294,15 +283,34 @@ impl PartialEq for Mat {
     }
 }
 
-impl Add<Mat, Mat> for Mat {
-    fn add(mut self, rhs: Mat) -> Mat {
+// TODO: It would be nice to use `add_assign()` to perform addition in
+// place on MatBaseMut values.
+
+// lhs + rhs
+impl<LHS:MatBase, RHS:MatBase> Add<RHS, Mat> for LHS {
+    fn add(self, rhs: RHS) -> Mat {
         check_same_size(&self, &rhs, &"Add");
-        self.add_assign(rhs);
-        self
+        let mut m = Mat::zero(self.rows(), self.cols());
+        for coor in self.coor_iter() {
+            m[coor] = *self.index(&coor) + rhs[coor];
+        }
+        m
     }
 }
 
-impl<RHS:MatBase> AddAssign<RHS> for Mat {
+// lhs + &rhs
+impl<'b, LHS:MatBase, RHS:MatBase> Add<&'b RHS, Mat> for LHS {
+    fn add(self, rhs: &RHS) -> Mat {
+        check_same_size(&self, rhs, &"Add");
+        let mut m = Mat::zero(self.rows(), self.cols());
+        for coor in self.coor_iter() {
+            m[coor] = *self.index(&coor) + rhs[coor];
+        }
+        m
+    }
+}
+
+impl<LHS:MatBaseMut, RHS:MatBase> AddAssign<RHS> for LHS {
     fn add_assign(&mut self, rhs: RHS) {
         check_same_size(self, &rhs, &"AddAssign");
         for coor in self.coor_iter() {
@@ -473,30 +481,7 @@ macro_rules! block_impl {
 block_impl!(MatBase, Block<'a, &'a T>);
 block_impl!(MatBaseMut, Block<'a, &'a mut T>);
 
-/* TODO: old implementation of Block.  Move these methods into BlockTrait
-macro_rules! block_impl (
-    ($Block:ty) => (
-        impl<'a, T:MatBase> $Block {
-            pub fn block<'b>(&'b self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b T> {
-                if (i0 < 0 || i0 >= i1 || i1 > self.rows() ||
-                    j0 < 0 || j0 >= j1 || j1 > self.cols())
-                {
-                    panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
-                           i0, j0, i1, j1, self.rows(), self.cols());
-                }
 
-                Block{m: self.m,
-                      i0: self.i0 + i0, j0: self.j0 + j0,
-                      i1: self.i0 + i1, j1: self.j0 + j1}
-            }
-
-        }
-    )
-);
-block_impl!(Block<'a, &'a T>);
-block_impl!(Block<'a, &'a mut T>);
-*/
-        
 impl<'a, T:MatBase> Index<uint, f32> for Block<'a, &'a T> {
     fn index(&self, &idx: &uint) -> &f32 {
         if self.rows() == 1 {
@@ -883,32 +868,3 @@ fn test_col_view() {
     assert_eq!(c2[0], 6.0);
     assert_eq!(c2[2], 22.0);
 }
-
-/*
-#[test]
-fn test_transpose_vecs() {
-    let a = Mat::from_slice(3, 1, &[2.0, 4.0, 6.0]);
-    let v = a.col(0);
-    let vt = v.t();
-
-    assert_eq!(vt * v, 56.0);
-    assert_mat_near!(v * vt,
-                     Mat::from_slice(3, 3,
-                                     &[4.0, 8.0, 12.0,
-                                       8.0, 16.0, 24.0,
-                                       12.0, 24.0, 36.0]),
-                     0.00001);
-}
- */
-
-#[test]
-fn test_foo() {
-    let a = Mat::from_slice(3, 3,
-                            &[4.0, 8.0, 12.0,
-                              8.0, 16.0, 24.0,
-                              12.0, 24.0, 36.0]);
-    let b = a.block(0, 0, 2, 2);
-    let col = b.col(0);
-}
-
-// TODO: norm of a block (to verify iteration)
