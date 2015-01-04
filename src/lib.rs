@@ -16,6 +16,7 @@ pub use lu::LU;
 
 mod assert_macros;
 mod base;
+mod householder;
 mod lu;
 mod qr;
 mod svd;

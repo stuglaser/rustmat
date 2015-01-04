@@ -1,4 +1,5 @@
-use base::{MatBase, MatBaseMut, Mat, SubAssign, BlockTrait};
+use base::{MatBase, Mat, BlockTrait};
+use householder::Householder;
 use std::num::Float;
 
 // QR Decomposition
@@ -7,57 +8,6 @@ use std::num::Float;
 // lower-tri part of R
 //
 // See: http://www.cs.cornell.edu/~bindel/class/cs6210-f09/lec18.pdf
-
-
-struct Householder {
-    v: Mat,  // Reflection vector.  H = I - 2*v*v'
-}
-
-impl Householder {
-    fn new<T:MatBase>(v: &T) -> Householder {
-        Householder::new_move(v.resolved())
-    }
-
-    fn new_move(v: Mat) -> Householder {
-        // Moves the vector, using no extra storage
-        if v.cols() != 1 {
-            panic!("Householder must be created from a column vector");
-        }
-        Householder{v: v}
-    }
-
-    // Returns the actual Householder matrix
-    fn resolve(&self) -> Mat {
-        let mut m = Mat::ident(self.v.len());
-        self.lapply(&mut m);
-        m
-    }
-
-    // Performs m := H * m
-    fn lapply<T:MatBaseMut>(&self, m: &mut T) {
-        if m.cols() != self.v.rows() {
-            panic!("Wrong dims {}x{} for lapply Householder of {}",
-                   m.rows(), m.cols(), self.v.rows());
-        }
-
-        // (I - 2*v*v') * m = m - 2 * v * (v' * m)
-        let tmp = &self.v.t() * &(*m);  // Force to an immutable borrow
-        m.sub_assign(&self.v * tmp * 2.0);
-    }
-
-    // Performs m := m * H
-    fn rapply<T:MatBaseMut>(&self, m: &mut T) {
-        if m.cols() != self.v.rows() {
-            panic!("Wrong dims {}x{} for rapply Householder of {}",
-                   m.rows(), m.cols(), self.v.rows());
-        }
-
-        // m * (I - 2*v*v') = m - 2 * (m * v) * v'
-        let tmp = &(*m) * &self.v;
-        m.sub_assign(tmp * &self.v.t() * 2.0);
-    }
-}
-
 
 struct QR {
     Q: Mat,
@@ -90,7 +40,7 @@ impl QR {
                 let norm = x.norm();
                 e1[(0, 0)] = norm.signum() * norm;
                 //println!("|x| * e = \n{}", e1);
-                let mut v = (x - &e1.block(0, 0, rows - j, 1));
+                let mut v = x - &e1.block(0, 0, rows - j, 1);
                 //println!("v = \n{}", v);
                 if !v.is_zero() {
                     v.normalize();
