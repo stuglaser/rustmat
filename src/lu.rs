@@ -1,4 +1,5 @@
 use base::{MatBase, Mat, Permutation};
+use std::iter;
 
 pub struct LU {  // P * A = L * U
     // TODO: Store in a single mat
@@ -54,7 +55,7 @@ impl LU {
             panic!("Vec has wrong length for LU solving");
         }
 
-        let mut x = Vec::from_elem(b.len(), 0.0);
+        let mut x : Vec<f32> = iter::repeat(0.0).take(b.len()).collect();
 
         // Propagate through L-inverse
         //

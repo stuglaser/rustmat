@@ -4,6 +4,11 @@
 #![allow(dead_code)]  // TODO: Remove eventually
 #![feature(macro_rules)]
 
+// They broke flexible ways of implementing operator traits.
+//
+// Broken by: https://github.com/rust-lang/rust/pull/20416
+#![feature(old_orphan_check)]
+
 #![crate_name = "rustmat"]
 
 pub use base::{Mat, Transposed};
@@ -13,3 +18,4 @@ mod assert_macros;
 mod base;
 mod lu;
 mod qr;
+mod svd;

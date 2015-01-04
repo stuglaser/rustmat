@@ -1,7 +1,9 @@
 use std::fmt;
+use std::iter;
 use std::iter::AdditiveIterator;
 use std::kinds::marker;
 use std::num;
+use std::ops::{Index, IndexMut, Add, Sub, Mul};
 use std::ptr;
 
 use std::slice;
@@ -59,6 +61,11 @@ pub trait MatBase : Index<(uint, uint), f32> + fmt::Show {
     fn t<'a>(&'a self) -> Transposed<'a, &Self>;
     fn norm(&self) -> f32;
 
+    fn resolved(&self) -> Mat {
+        Mat::from_fn(self.rows(), self.cols(),
+                     |i, j| self[(i, j)])
+    }
+
     fn coor_iter(&self) -> CoorIterator {
         CoorIterator::new(self.rows(), self.cols())
     }
@@ -104,16 +111,14 @@ impl Mat {
     }
 
     pub fn zero(r: uint, c: uint) -> Mat {
-        let d = Vec::from_elem(r * c, 0.0);
-        Mat{r: r, c: c, data: d}
+        Mat{r: r, c: c,
+            data: iter::repeat(0.0).take(r * c).collect()}
     }
 
     pub fn ident(n: uint) -> Mat {
-        let mut d = Vec::from_elem(n * n, 0.0);
-        for i in range(0, n) {
-            d[i * n + i] = 1.0;
-        }
-        Mat{r: n, c: n, data: d}
+        Mat{r: n, c: n,
+            data: range(0, n*n).map(
+                |i| if i % n == i / n { 1.0 } else { 0.0 }).collect()}
     }
 
     pub fn from_slice(r: uint, c: uint, rowmajor: &[f32]) -> Mat {
@@ -361,6 +366,13 @@ impl<LHS:MatBase, RHS:MatBase> Mul<RHS, Mat> for LHS {
     }
 }
 
+// lhs * &rhs
+impl<'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS, Mat> for LHS {
+    fn mul(self, rhs:&RHS) -> Mat {
+        (&self).mul(rhs)
+    }
+}
+
 // &lhs * rhs
 impl<'a, LHS:MatBase + 'a, RHS:MatBase> Mul<RHS, Mat> for &'a LHS {
     fn mul(self, rhs:RHS) -> Mat {
@@ -375,6 +387,13 @@ impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS, Mat> for &'a LHS {
             self.rows(), rhs.cols(),
             |i, j|
             range(0, self.cols()).fold(0.0, |x, k| x + self[(i, k)] * rhs[(k, j)]))
+    }
+}
+
+// &lhs * &mut rhs
+impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b mut RHS, Mat> for &'a LHS {
+    fn mul(self, rhs: &mut RHS) -> Mat {
+        self.mul(rhs)
     }
 }
 
@@ -395,33 +414,46 @@ pub struct Transposed<'a, T> {
 impl<'a, T:MatBase + 'a> Transposed<'a, &'a T> {}
 impl<'a, T:MatBaseMut + 'a> Transposed<'a, &'a mut T> {}
 
-impl<'a, T: MatBase + 'a> MatBase for Transposed<'a, &'a T> {
-    fn rows(&self) -> uint {
-        self.m.cols()
-    }
+macro_rules! transposed_matbase_impl {
+    ($Base: ident, $Transposed:ty) => {
+        impl<'a, T:$Base + 'a> MatBase for $Transposed {
+            fn rows(&self) -> uint {
+                self.m.cols()
+            }
 
-    fn cols(&self) -> uint {
-        self.m.rows()
-    }
+            fn cols(&self) -> uint {
+                self.m.rows()
+            }
 
-    fn len(&self) -> uint {
-        self.m.len()
-    }
+            fn len(&self) -> uint {
+                self.m.len()
+            }
 
-    fn norm(&self) -> f32 {
-        self.m.norm()
-    }
+            fn norm(&self) -> f32 {
+                self.m.norm()
+            }
 
-    fn t(&self) -> Transposed<'a, &Transposed<'a, &'a T>> {
-        Transposed{m: self}
+            fn t(&self) -> Transposed<&Self> {
+                Transposed{m: self}
+            }
+        }
     }
 }
+transposed_matbase_impl!(MatBase, Transposed<'a, &'a T>);
+transposed_matbase_impl!(MatBaseMut, Transposed<'a, &'a mut T>);
 
-impl<'a, T:MatBase + 'a> Index<(uint, uint), f32> for Transposed<'a, &'a T> {
-    fn index<'r>(&'r self, &(i, j): &(uint, uint)) -> &f32 {
-        self.m.index(&(j, i))
+macro_rules! transposed_index_impl {
+    ($Base:ident, $Block:ty) => {
+        impl<'a, T:$Base> Index<(uint, uint), f32> for $Block {
+            //impl<'a, T:MatBase + 'a> Index<(uint, uint), f32> for Transposed<'a, &'a T> {
+            fn index<'r>(&'r self, &(i, j): &(uint, uint)) -> &f32 {
+                self.m.index(&(j, i))
+            }
+        }
     }
 }
+transposed_index_impl!(MatBase, Transposed<'a, &'a T>);
+transposed_index_impl!(MatBaseMut, Transposed<'a, &'a mut T>);
 
 impl<'a, T:MatBaseMut + 'a> IndexMut<(uint, uint), f32> for Transposed<'a, &'a mut T> {
     fn index_mut<'r>(&'r mut self, &(i, j): &(uint, uint)) -> &'r mut f32 {
@@ -443,7 +475,7 @@ pub struct Block<'a, T> {
 // The impl can only implement one, so these shared methods need to be
 // gathered into a trait.  `BlockTrait` contains all methods that
 // would have been implemented in the impl.
-pub trait BlockTrait : MatBase {
+pub trait BlockTrait : MatBase + Sized {
     fn iter<'b>(&'b self) -> BlockIterator<'b, &'b Self> {
         BlockIterator::new(self)
     }
@@ -552,7 +584,6 @@ impl<'a, T:MatBase> Iterator<f32> for BlockIterator<'a, &'a T> {
 macro_rules! block_matbase_impl (
     ($Base: ident, $Block:ty) => (
         impl<'a, T:$Base + 'a> MatBase for $Block {
-        //impl<'a, T: $Base> MatBase for $Block {
             fn rows(&self) -> uint {
                 self.i1 - self.i0
             }
@@ -607,6 +638,7 @@ macro_rules! impl_show_for_matbase {
     }
 }
 impl_show_for_matbase!(MatBase, Transposed<'a, &'a T>);
+impl_show_for_matbase!(MatBaseMut, Transposed<'a, &'a mut T>);
 impl_show_for_matbase!(MatBase, Block<'a, &'a T>);
 impl_show_for_matbase!(MatBaseMut, Block<'a, &'a mut T>);
 
@@ -617,18 +649,15 @@ pub struct Permutation {
 
 impl Permutation {
     pub fn ident(n: uint) -> Permutation {
-        let v = Vec::from_fn(n, |i| i);
-        Permutation{v: v}
+        Permutation{v: range(0, n).collect()}
     }
 
     pub fn swap(n: uint, i: uint, j: uint) -> Permutation {
-        let v = Vec::from_fn(
-            n,
+        Permutation{v: range(0, n).map(
             |k|
             if k == i { j }
             else if k == j { i }
-            else { k });
-        Permutation{v: v}
+            else { k }).collect()}
     }
 
     pub fn len(&self) -> uint {
@@ -651,7 +680,7 @@ impl Permutation {
     }
 
     pub fn inv(&self) -> Permutation {
-        let mut v = Vec::from_elem(self.v.len(), 0);
+        let mut v : Vec<uint> = iter::repeat(0).take(self.v.len()).collect();
         for (a, b) in self.v.iter().enumerate() {
             v[*b] = a;
         }
@@ -673,8 +702,7 @@ impl Index<uint, uint> for Permutation {
 
 impl Mul<Permutation, Permutation> for Permutation {
     fn mul(self, rhs: Permutation) -> Permutation {
-        let v = Vec::from_fn(self.len(), |i| rhs[self[i]]);
-        Permutation{v: v}
+        Permutation{v: range(0, self.len()).map(|i| rhs[self[i]]).collect()}
     }
 }
 
@@ -698,7 +726,7 @@ impl<T:Clone> Mul<Vec<T>, Vec<T>> for Permutation {
         if self.len() != rhs.len() {
             panic!("Permutation len doesn't match Vec len");
         }
-        Vec::from_fn(rhs.len(), |i| rhs[self[i]].clone())
+        range(0, rhs.len()).map(|i| rhs[self[i]].clone()).collect()
     }
 }
 
