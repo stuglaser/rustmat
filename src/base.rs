@@ -112,6 +112,12 @@ pub trait MatBaseMut : MatBase + IndexMut<(uint, uint), f32> + Sized {
         let cols = self.cols();
         make_block_mut(self, 0, j, rows, cols)
     }
+
+    fn block_bottom_mut<'a>(&'a mut self, i: uint) -> Block<'a, &mut Self> {
+        let rows = self.rows();
+        let cols = self.cols();
+        make_block_mut(self, i, 0, rows, cols)
+    }
 }
 
 fn check_same_size<T:MatBase, U:MatBase, M:fmt::Show>(a: &T, b: &U, text: &M) {

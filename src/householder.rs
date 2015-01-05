@@ -26,7 +26,7 @@ impl Householder {
 
     // Performs m := H * m
     pub fn lapply<T:MatBaseMut>(&self, m: &mut T) {
-        if m.cols() != self.v.rows() {
+        if self.v.rows() != m.rows() {
             panic!("Wrong dims {}x{} for lapply Householder of {}",
                    m.rows(), m.cols(), self.v.rows());
         }

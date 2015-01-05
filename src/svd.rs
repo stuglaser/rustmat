@@ -22,8 +22,8 @@ fn is_bidiagonal<T:MatBase>(A: &T, eps: f32) -> bool {
 
 fn bidiagonalize(A: Mat) -> (Mat, Mat, Mat) {
     let mut B = A.resolved();
-    let U = Mat::ident(B.rows());
-    let V = Mat::ident(B.cols());
+    let mut U = Mat::ident(B.rows());
+    let mut V = Mat::ident(B.cols());
 
     let rows = B.rows();  // Borrow checker can't handle simple things
     let cols = B.cols();
@@ -31,30 +31,30 @@ fn bidiagonalize(A: Mat) -> (Mat, Mat, Mat) {
     let mut e1 = Mat::zero(B.rows(), 1);  // Avoids allocations
 
     for i in range(0, A.rows() - 1) {  // TODO: min(rows, cols)?
-        println!("========= Iteration {}", i);
-        println!("Before:\n{}", B);
-
         let mut Bb = B.block_mut(i, i, rows, cols);
-        let bbrows = Bb.rows();
-        let bbcols = Bb.cols();
 
         // Reduce the column
         let Hcol = reflector_to_e1(&Bb.col(0));
         Hcol.lapply(&mut Bb);
+        Hcol.rapply(&mut U.block_right_mut(i));
 
         // Reduce the row
         let Hrow = reflector_to_e1(&Bb.block(0, 1, 1, Bb.cols()).t());
-        Hrow.rapply(&mut Bb.block_mut(0, 1, bbrows, bbcols));
+        Hrow.rapply(&mut Bb.block_right_mut(1));
+        Hrow.lapply(&mut V.block_bottom_mut(i + 1));
     }
 
     // Final element (just to make it positive)
     let last = (B.rows() - 1, B.cols() - 1);
     if B[last] < 0.0 {
         B[last] *= -1.0;
-        // TODO: Modify U
+        // Negates the right column of U
+        let uright = U.cols() - 1;
+        for i in range(0, U.rows()) {
+            U[(i, uright)] *= -1.0;
+        }
     }
 
-    println!("Final bidiagonalized:\n{}", B);
     (U, B, V)
 }
 
