@@ -98,6 +98,16 @@ pub trait MatBase : Index<(uint, uint), f32> + fmt::Show {
 
 pub trait MatBaseMut : MatBase + IndexMut<(uint, uint), f32> {
     //fn t_mut<'a>(&'a mut self) -> Transposed<'a, &mut Self>;
+
+    fn block_right_mut<'a>(&'a mut self, j: uint) -> Block<'a, &mut Self> {
+        if j >= self.cols() {
+            panic!("Cannot take block_r of {} of {}x{}", j, self.rows(), self.cols());
+        }
+        let rows = self.rows();
+        let cols = self.cols();
+
+        Block{m: &mut (*self), i0: 0, j0: j, i1: rows, j1: cols}
+    }
 }
 
 fn check_same_size<T:MatBase, U:MatBase, M:fmt::Show>(a: &T, b: &U, text: &M) {
@@ -177,8 +187,7 @@ impl Mat {
         if j >= self.c {
             panic!("Column index out of bounds");
         }
-        let rows = self.rows();
-        Block{m: self, i0: 0, j0: j, i1: rows, j1: j + 1}
+        make_block(self, 0, j, self.rows(), j + 1)
     }
 
     pub fn iter(&self) -> slice::Iter<f32> {
@@ -210,19 +219,11 @@ impl Mat {
     }
 
     pub fn block<'a>(&'a self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &Mat> {
-        if i0 >= i1 || i1 > self.rows() || j0 >= j1 || j1 > self.cols() {
-            panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
-                  i0, j0, i1, j1, self.rows(), self.cols());
-        }
-        Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
+        make_block(self, i0, j0, i1, j1)
     }
 
     pub fn block_mut<'a>(&'a mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &mut Mat> {
-        if i0 >= i1 || i1 > self.rows() || j0 >= j1 || j1 > self.cols() {
-            panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
-                  i0, j0, i1, j1, self.rows(), self.cols());
-        }
-        Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
+        make_block_mut(self, i0, j0, i1, j1)
     }
 
     pub fn normalize(&mut self) {
@@ -474,6 +475,23 @@ pub struct Block<'a, T> {
     j1: uint
 }
 
+fn make_block<'b, U: MatBase>(m: &'b U, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b U> {
+    if i0 >= i1 || i1 > m.rows() || j0 >= j1 || j1 > m.cols() {
+        panic!("Invalid block ({}, {} to {}, {}) for {} x {}",
+               i0, j0, i1, j1, m.rows(), m.cols());
+    }
+    Block{m: m, i0: i0, j0: j0, i1: i1, j1: j1}
+}
+
+fn make_block_mut<'b, U: MatBaseMut>(m: &'b mut U, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b mut U> {
+    if i0 >= i1 || i1 > m.rows() || j0 >= j1 || j1 > m.cols() {
+        panic!("Invalid block ({}, {} to {}, {}) for {} x {}",
+               i0, j0, i1, j1, m.rows(), m.cols());
+    }
+    Block{m: m, i0: i0, j0: j0, i1: i1, j1: j1}
+}
+
+
 // Block needs be implemented for `&MatBase` and for `&mut MatBase`.
 // The impl can only implement one, so these shared methods need to be
 // gathered into a trait.  `BlockTrait` contains all methods that
@@ -495,20 +513,11 @@ macro_rules! block_impl {
                 if j >= self.cols() {
                     panic!("Column index out of bounds");
                 }
-                //Block{m: self.m,
-                //      i0: self.i0, j0: self.j0 + j,
-                //      i1: self.i1, j1: self.j0 + j + 1}
-                Block{m: self,
-                      i0: 0, j0: j,
-                      i1: self.rows(), j1: j + 1}
+                make_block(self, 0, j, self.rows(), j + 1)
             }
 
             fn block<'b>(&'b self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b Self> {
-                if i0 >= i1 || i1 > self.rows() || j0 >= j1 || j1 > self.cols() {
-                    panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
-                           i0, j0, i1, j1, self.rows(), self.cols());
-                }
-                Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
+                make_block(self, i0, j0, i1, j1)
             }
         }
     }
@@ -518,11 +527,7 @@ block_impl!(MatBaseMut, Block<'a, &'a mut T>);
 
 impl<'a, T:MatBaseMut + 'a> Block<'a, &'a mut T> {
     pub fn block_mut<'b>(&'b mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &mut Self> {
-        if i0 >= i1 || i1 > self.rows() || j0 >= j1 || j1 > self.cols() {
-            panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
-                  i0, j0, i1, j1, self.rows(), self.cols());
-        }
-        Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
+        make_block_mut(self, i0, j1, i1, j1)
     }
 }
 
