@@ -1,4 +1,5 @@
-use base::{MatBase, Mat, SubAssign, BlockTrait};
+use base::{MatBase, MatBaseMut, Mat, SubAssign, BlockTrait};
+use householder::reflector_to_e1;
 use std::num::Float;
 
 // SVD Decomposition
@@ -9,10 +10,75 @@ struct SVD {
     V: Mat,
 }
 
+fn is_bidiagonal<T:MatBase>(A: &T, eps: f32) -> bool {
+    for coor in A.coor_iter() {
+        let on_bidiag = coor.0 == coor.1 || coor.0 + 1 == coor.1;
+        if !on_bidiag && A[coor].abs() > eps {
+            return false
+        }
+    }
+    true
+}
+
+fn bidiagonalize(A: Mat) -> (Mat, Mat, Mat) {
+    let mut B = A.resolved();
+    let U = Mat::ident(B.rows());
+    let V = Mat::ident(B.cols());
+
+    let rows = B.rows();  // Borrow checker can't handle simple things
+    let cols = B.cols();
+
+    let mut e1 = Mat::zero(B.rows(), 1);  // Avoids allocations
+
+    for i in range(0, A.rows() - 1) {  // TODO: min(rows, cols)?
+        println!("========= Iteration {}", i);
+        println!("Before:\n{}", B);
+
+        let mut Bb = B.block_mut(i, i, rows, cols);
+        let bbrows = Bb.rows();
+        let bbcols = Bb.cols();
+
+        // Reduce the column
+        let Hcol = reflector_to_e1(&Bb.col(0));
+        Hcol.lapply(&mut Bb);
+
+        // Reduce the row
+        let Hrow = reflector_to_e1(&Bb.block(0, 1, 1, Bb.cols()).t());
+        Hrow.rapply(&mut Bb.block_mut(0, 1, bbrows, bbcols));
+    }
+
+    // Final element (just to make it positive)
+    let last = (B.rows() - 1, B.cols() - 1);
+    if B[last] < 0.0 {
+        B[last] *= -1.0;
+        // TODO: Modify U
+    }
+
+    println!("Final bidiagonalized:\n{}", B);
+    (U, B, V)
+}
+
 impl SVD {
     pub fn of(A: &Mat) -> SVD {
         SVD{U: Mat::ident(2), S: Mat::ident(2), V: Mat::ident(2)}
     }
+}
+
+#[test]
+fn test_bidiagonalize() {
+    let A = Mat::from_slice(4, 4,
+                            &[1., 3., 3., -2.,
+                              2., -2., 4., 8.,
+                              2., 5., 5., 1.,
+                              -1., 1., 4., 3.]);
+    let (Ub, B, Vb) = bidiagonalize(A.clone());
+
+    if !is_bidiagonal(&B, 1e-4) {
+        panic!("Isn't bidiagonal:\n{}", B);
+    }
+
+    let Ar = Ub * B * Vb;
+    assert_mat_near!(Ar, A, 1e-4);
 }
 
 #[test]

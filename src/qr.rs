@@ -1,5 +1,5 @@
 use base::{MatBase, Mat, BlockTrait};
-use householder::{Householder, reflector_to_e1};
+use householder::reflector_to_e1;
 use std::num::Float;
 
 // QR Decomposition

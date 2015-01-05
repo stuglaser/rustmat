@@ -516,6 +516,16 @@ macro_rules! block_impl {
 block_impl!(MatBase, Block<'a, &'a T>);
 block_impl!(MatBaseMut, Block<'a, &'a mut T>);
 
+impl<'a, T:MatBaseMut + 'a> Block<'a, &'a mut T> {
+    pub fn block_mut<'b>(&'b mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &mut Self> {
+        if i0 >= i1 || i1 > self.rows() || j0 >= j1 || j1 > self.cols() {
+            panic!("Invalid block ({}, {}, {}, {}) for {} x {}",
+                  i0, j0, i1, j1, self.rows(), self.cols());
+        }
+        Block{m: self, i0: i0, j0: j0, i1: i1, j1: j1}
+    }
+}
+
 
 impl<'a, T:MatBase> Index<uint, f32> for Block<'a, &'a T> {
     fn index(&self, &idx: &uint) -> &f32 {
