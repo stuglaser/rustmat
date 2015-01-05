@@ -1,5 +1,5 @@
 use base::{MatBase, Mat, BlockTrait};
-use householder::Householder;
+use householder::{Householder, reflector_to_e1};
 use std::num::Float;
 
 // QR Decomposition
@@ -33,22 +33,8 @@ impl QR {
             let rows = R.rows();  // Borrow checker limitations
             let cols = R.cols();
             let mut Rb = R.block_mut(j, j, rows, cols);
-
-            // All I want for christmas is a smarter borrow checker
-            let w = {
-                let x = Rb.col(0);
-                e1[(0, 0)] = x.norm();
-                //println!("|x| * e = \n{}", e1);
-                let mut v = x - &e1.block(0, 0, rows - j, 1);
-                //println!("v = \n{}", v);
-                if !v.is_zero() {
-                    v.normalize();
-                }
-                v
-            };
-
-            let H = Householder::new_move(w);
-            //println!("H = \n{}", H.resolve());
+            
+            let H = reflector_to_e1(&Rb.col(0));
 
             // H := I - 2ww'
             // R := H * R

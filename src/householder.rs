@@ -48,3 +48,21 @@ impl Householder {
         m.sub_assign(tmp * &self.v.t() * 2.0);
     }
 }
+
+// Creates a Householder reflection that reflects the given (column)
+// vector, x, to [c, 0, ..., 0]
+pub fn reflector_to_e1<T:MatBase>(x: &T) -> Householder {
+    if !x.is_column() {
+        panic!("Can only reflect along (column) vectors:\n{}", x);
+    }
+    
+    let norm = x.norm();
+    let mut v = x.resolved();
+    v[(0, 0)] -= norm;  // v = x - |x| * e1
+
+    if !v.is_zero() {
+        v.normalize();
+    }
+    
+    Householder::new_move(v)
+}

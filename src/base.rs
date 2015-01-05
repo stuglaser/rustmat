@@ -78,6 +78,14 @@ pub trait MatBase : Index<(uint, uint), f32> + fmt::Show {
         self.rows() == other.rows() && self.cols() == other.cols()
     }
 
+    fn is_column(&self) -> bool {
+        self.cols() == 1
+    }
+
+    fn is_row(&self) -> bool {
+        self.rows() == 1
+    }
+
     fn is_zero(&self) -> bool {
         for coor in self.coor_iter() {
             if self[coor] != 0.0 {
