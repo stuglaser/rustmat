@@ -37,8 +37,7 @@ impl QR {
             // All I want for christmas is a smarter borrow checker
             let w = {
                 let x = Rb.col(0);
-                let norm = x.norm();
-                e1[(0, 0)] = norm.signum() * norm;
+                e1[(0, 0)] = x.norm();
                 //println!("|x| * e = \n{}", e1);
                 let mut v = x - &e1.block(0, 0, rows - j, 1);
                 //println!("v = \n{}", v);
@@ -48,7 +47,7 @@ impl QR {
                 v
             };
 
-            let H = Householder::new_move(w.clone()); // TODO: Don't clone, just move
+            let H = Householder::new_move(w);
             //println!("H = \n{}", H.resolve());
 
             // H := I - 2ww'
@@ -81,8 +80,8 @@ fn test_qr_simple() {
     let R = Mat::from_slice(3, 3, &[1.0, 1.0, 2.0,
                                     0.0, 1.0, 1.0,
                                     0.0, 0.0, 3.0]);
-    assert_mat_near!(qr.Q, Q, 1e-6);
     assert_mat_near!(qr.R, R, 1e-6);
+    assert_mat_near!(qr.Q, Q, 1e-6);
 }
 
 #[test]
@@ -98,6 +97,6 @@ fn test_qr_wikipedia() {
     let R = Mat::from_slice(3, 3, &[14., 21., -14.,
                                     0., 175., -70.,
                                     0., 0., 35.]);
-    assert_mat_near!(qr.Q, Q, 1e-4);
     assert_mat_near!(qr.R, R, 1e-4);
+    assert_mat_near!(qr.Q, Q, 1e-4);
 }

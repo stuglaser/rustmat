@@ -99,6 +99,7 @@ fn check_same_size<T:MatBase, U:MatBase, M:fmt::Show>(a: &T, b: &U, text: &M) {
     }
 }
 
+#[derive(Clone)]
 pub struct Mat {
     pub r: uint,
     pub c: uint,
@@ -250,12 +251,6 @@ impl MatBase for Mat {
 }
 
 impl MatBaseMut for Mat {
-}
-
-impl Clone for Mat {
-    fn clone(&self) -> Mat {
-        Mat{r: self.r, c: self.c, data: self.data.clone()}
-    }
 }
 
 impl Fn<(uint, uint), f32> for Mat {
