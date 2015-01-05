@@ -1,6 +1,5 @@
 use base::{MatBase, MatBaseMut, Mat, BlockTrait};
 use householder::reflector_to_e1;
-use std::num::Float;
 
 // QR Decomposition
 //
@@ -21,8 +20,6 @@ impl QR {
         }
         let mut R = A.clone();
         let mut Q = Mat::ident(A.r);
-
-        let mut e1 = Mat::zero(R.rows(), 1);  // Avoids reallocation
 
         for j in range(0, R.cols()) {
             //println!("Iteration {}", j);

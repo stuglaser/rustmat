@@ -1,4 +1,4 @@
-use base::{MatBase, MatBaseMut, Mat, SubAssign, BlockTrait};
+use base::{MatBase, MatBaseMut, Mat, BlockTrait};
 use householder::reflector_to_e1;
 use std::num::Float;
 
@@ -27,8 +27,6 @@ fn bidiagonalize(A: Mat) -> (Mat, Mat, Mat) {
 
     let rows = B.rows();  // Borrow checker can't handle simple things
     let cols = B.cols();
-
-    let mut e1 = Mat::zero(B.rows(), 1);  // Avoids allocations
 
     for i in range(0, A.rows() - 1) {  // TODO: min(rows, cols)?
         let mut Bb = B.block_mut(i, i, rows, cols);
