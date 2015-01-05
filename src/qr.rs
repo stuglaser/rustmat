@@ -1,4 +1,4 @@
-use base::{MatBase, Mat, BlockTrait};
+use base::{MatBase, MatBaseMut, Mat, BlockTrait};
 use householder::reflector_to_e1;
 use std::num::Float;
 

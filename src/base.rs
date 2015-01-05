@@ -54,7 +54,7 @@ fn sum_sq<I: Iterator<f32>>(iter: I) -> f32 {
     iter.map(|x| x * x).sum()
 }
 
-pub trait MatBase : Index<(uint, uint), f32> + fmt::Show {
+pub trait MatBase : Index<(uint, uint), f32> + fmt::Show + Sized {
     fn rows(&self) -> uint;
     fn cols(&self) -> uint;
     fn len(&self) -> uint;
@@ -69,10 +69,6 @@ pub trait MatBase : Index<(uint, uint), f32> + fmt::Show {
     fn coor_iter(&self) -> CoorIterator {
         CoorIterator::new(self.rows(), self.cols())
     }
-
-    // I don't think `block` can be part of a trait until rust itself changes:
-    // https://github.com/aturon/rfcs/blob/collections-conventions/text/0000-collection-conventions.md#lack-of-iterator-methods
-    //fn block<'a>(&self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, Self>;
 
     fn same_size<T:MatBase>(&self, other: &T) -> bool{
         self.rows() == other.rows() && self.cols() == other.cols()
@@ -94,19 +90,27 @@ pub trait MatBase : Index<(uint, uint), f32> + fmt::Show {
         }
         true
     }
+
+    fn block<'a>(&self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &Self> {
+        make_block(self, i0, j0, i1, j1)
+    }
+
+    fn block_right<'a>(&'a mut self, j: uint) -> Block<'a, &Self> {
+        make_block(self, 0, j, self.rows(), self.cols())
+    }
 }
 
-pub trait MatBaseMut : MatBase + IndexMut<(uint, uint), f32> {
+pub trait MatBaseMut : MatBase + IndexMut<(uint, uint), f32> + Sized {
     //fn t_mut<'a>(&'a mut self) -> Transposed<'a, &mut Self>;
 
+    fn block_mut<'a>(&mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &mut Self> {
+        make_block_mut(self, i0, j0, i1, j1)
+    }
+
     fn block_right_mut<'a>(&'a mut self, j: uint) -> Block<'a, &mut Self> {
-        if j >= self.cols() {
-            panic!("Cannot take block_r of {} of {}x{}", j, self.rows(), self.cols());
-        }
         let rows = self.rows();
         let cols = self.cols();
-
-        Block{m: &mut (*self), i0: 0, j0: j, i1: rows, j1: cols}
+        make_block_mut(self, 0, j, rows, cols)
     }
 }
 
@@ -216,14 +220,6 @@ impl Mat {
                 ptr::swap(self.at_mut(a, j), self.at_mut(b, j));
             }
         }
-    }
-
-    pub fn block<'a>(&'a self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &Mat> {
-        make_block(self, i0, j0, i1, j1)
-    }
-
-    pub fn block_mut<'a>(&'a mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &mut Mat> {
-        make_block_mut(self, i0, j0, i1, j1)
     }
 
     pub fn normalize(&mut self) {
@@ -502,7 +498,6 @@ pub trait BlockTrait : MatBase + Sized {
     }
 
     fn col<'b>(&'b self, j: uint) -> Block<'b, &'b Self>;
-    fn block<'b>(&'b self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b Self>;
 }
 
 // impl MatBase[Mut] for Block
@@ -515,10 +510,6 @@ macro_rules! block_impl {
                 }
                 make_block(self, 0, j, self.rows(), j + 1)
             }
-
-            fn block<'b>(&'b self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &'b Self> {
-                make_block(self, i0, j0, i1, j1)
-            }
         }
     }
 }
@@ -526,9 +517,6 @@ block_impl!(MatBase, Block<'a, &'a T>);
 block_impl!(MatBaseMut, Block<'a, &'a mut T>);
 
 impl<'a, T:MatBaseMut + 'a> Block<'a, &'a mut T> {
-    pub fn block_mut<'b>(&'b mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'b, &mut Self> {
-        make_block_mut(self, i0, j1, i1, j1)
-    }
 }
 
 
