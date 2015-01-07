@@ -91,6 +91,13 @@ pub trait MatBase : Index<(uint, uint), f32> + fmt::Show + Sized {
         true
     }
 
+    fn col(&self, j: uint) -> Block<&Self> {
+        if j >= self.cols() {
+            panic!("Column index out of bounds");
+        }
+        make_block(self, 0, j, self.rows(), j + 1)
+    }
+
     fn block<'a>(&self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &Self> {
         make_block(self, i0, j0, i1, j1)
     }
@@ -191,13 +198,6 @@ impl Mat {
 
     pub fn is_square(&self) -> bool {
         self.r == self.c
-    }
-
-    pub fn col(&self, j: uint) -> Block<&Mat> {
-        if j >= self.c {
-            panic!("Column index out of bounds");
-        }
-        make_block(self, 0, j, self.rows(), j + 1)
     }
 
     pub fn iter(&self) -> slice::Iter<f32> {
@@ -502,21 +502,12 @@ pub trait BlockTrait : MatBase + Sized {
     fn iter<'b>(&'b self) -> BlockIterator<'b, &'b Self> {
         BlockIterator::new(self)
     }
-
-    fn col<'b>(&'b self, j: uint) -> Block<'b, &'b Self>;
 }
 
 // impl MatBase[Mut] for Block
 macro_rules! block_impl {
     ($Base:ident, $Block:ty) => {
-        impl<'a, T:$Base + 'a> BlockTrait for $Block {
-            fn col<'b>(&'b self, j: uint) -> Block<'b, &'b Self> {
-                if j >= self.cols() {
-                    panic!("Column index out of bounds");
-                }
-                make_block(self, 0, j, self.rows(), j + 1)
-            }
-        }
+        impl<'a, T:$Base + 'a> BlockTrait for $Block {}
     }
 }
 block_impl!(MatBase, Block<'a, &'a T>);

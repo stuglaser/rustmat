@@ -1,4 +1,4 @@
-use base::{MatBase, MatBaseMut, Mat, BlockTrait};
+use base::{MatBase, MatBaseMut, Mat};
 use householder::reflector_to_e1;
 
 // QR Decomposition
@@ -8,7 +8,7 @@ use householder::reflector_to_e1;
 //
 // See: http://www.cs.cornell.edu/~bindel/class/cs6210-f09/lec18.pdf
 
-struct QR {
+pub struct QR {
     Q: Mat,
     R: Mat,
 }

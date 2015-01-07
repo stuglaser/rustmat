@@ -1,6 +1,8 @@
-use base::{MatBase, MatBaseMut, Mat, BlockTrait};
+use base::{MatBase, MatBaseMut, Mat};
 use householder::reflector_to_e1;
 use std::num::Float;
+
+use qr::QR;
 
 // SVD Decomposition
 
@@ -20,6 +22,50 @@ fn is_bidiagonal<T:MatBase>(A: &T, eps: f32) -> bool {
     true
 }
 
+fn is_diagonal<T:MatBase>(A: &T, eps: f32) -> bool {
+    for coor in A.coor_iter() {
+        let on_diag = coor.0 == coor.1;
+        if !on_diag && A[coor].abs() > eps {
+            return false
+        }
+    }
+    true
+}
+
+fn is_identity<T:MatBase>(A: &T, eps: f32) -> bool {
+    if A.rows() != A.cols() {
+        return false;
+    }
+    
+    for coor in A.coor_iter() {
+        let on_diag = coor.0 == coor.1;
+        if on_diag {
+            if (A[coor] - 1.0).abs() > eps {
+                return false
+            }
+        }
+        else {
+            if A[coor].abs() > eps {
+                return false
+            }
+        }
+    }
+    true
+}
+
+fn is_orthonormal<T:MatBase>(A: &T, eps: f32) -> bool {
+    let m = A * A.t();
+    if !is_identity(&m, eps) {
+        return false;
+    }
+    for j in range(0, A.cols()) {
+        if (A.col(j).norm() - 1.0).abs() > eps {
+            return false
+        }
+    }
+    true
+}
+
 fn bidiagonalize(A: Mat) -> (Mat, Mat, Mat) {
     let mut B = A.resolved();
     let mut U = Mat::ident(B.rows());
@@ -28,7 +74,7 @@ fn bidiagonalize(A: Mat) -> (Mat, Mat, Mat) {
     let rows = B.rows();  // Borrow checker can't handle simple things
     let cols = B.cols();
 
-    for i in range(0, A.rows() - 1) {  // TODO: min(rows, cols)?
+    for i in range(0, A.rows()) {  // TODO: min(rows, cols)?
         let mut Bb = B.block_mut(i, i, rows, cols);
 
         // Reduce the column
@@ -36,20 +82,11 @@ fn bidiagonalize(A: Mat) -> (Mat, Mat, Mat) {
         Hcol.lapply(&mut Bb);
         Hcol.rapply(&mut U.block_right_mut(i));
 
-        // Reduce the row
-        let Hrow = reflector_to_e1(&Bb.block(0, 1, 1, Bb.cols()).t());
-        Hrow.rapply(&mut Bb.block_right_mut(1));
-        Hrow.lapply(&mut V.block_bottom_mut(i + 1));
-    }
-
-    // Final element (just to make it positive)
-    let last = (B.rows() - 1, B.cols() - 1);
-    if B[last] < 0.0 {
-        B[last] *= -1.0;
-        // Negates the right column of U
-        let uright = U.cols() - 1;
-        for i in range(0, U.rows()) {
-            U[(i, uright)] *= -1.0;
+        if i < A.cols() - 1 {
+            // Reduce the row
+            let Hrow = reflector_to_e1(&Bb.block(0, 1, 1, Bb.cols()).t());
+            Hrow.rapply(&mut Bb.block_right_mut(1));
+            Hrow.lapply(&mut V.block_bottom_mut(i + 1));
         }
     }
 
@@ -57,8 +94,17 @@ fn bidiagonalize(A: Mat) -> (Mat, Mat, Mat) {
 }
 
 impl SVD {
-    pub fn of(A: &Mat) -> SVD {
-        SVD{U: Mat::ident(2), S: Mat::ident(2), V: Mat::ident(2)}
+    pub fn of(A: Mat) -> SVD {
+        let (mut U, mut S, mut V) = bidiagonalize(A);
+
+        // QR procedure to diagonalize S.  This is a very inefficient
+        // and poorly conditioned version, but it's the easiest to
+        // write.
+        for _ in range(0, 10) {
+            let qr = QR::of(&S);
+        }
+        
+        SVD{U: U, S: S, V: V}
     }
 }
 
@@ -80,11 +126,25 @@ fn test_bidiagonalize() {
 }
 
 #[test]
+fn test_bidiagonalize_rect() {
+    let A = Mat::from_slice(
+        2, 3, &[3., 2., 2.,
+                2., 3., -2.]);
+    let (Ub, B, Vb) = bidiagonalize(A.clone());
+    if !is_bidiagonal(&B, 1e-4) {
+        panic!("Isn't bidiagonal:\n{}", B);
+    }
+
+    let Ar = Ub * B * Vb;
+    assert_mat_near!(Ar, A, 1e-4);
+}
+
+#[test]
 fn test_svd_simple() {
     let A = Mat::from_slice(
         2, 3, &[3., 2., 2.,
                 2., 3., -2.]);
-    let svd = SVD::of(&A);
+    let svd = SVD::of(A.clone());
 
     let rt2 = 1. / (2.0 as f32).sqrt();
     let rt18 =  1. / (18.0 as f32).sqrt();
@@ -93,4 +153,14 @@ fn test_svd_simple() {
     let Vt = Mat::from_slice(3, 3, &[rt2, rt2, 0.,
                                      rt18, -rt18, 4. * rt18,
                                      2./3., -2./3., -1./3.]);
+
+    println!("U = \n{}S=\n{}V=\n{}", svd.U, svd.S, svd.V);
+
+    if !is_diagonal(&svd.S, 1e-4) {
+        panic!("S matrix is not diagonal:\n{}", svd.S);
+    }
+
+    assert_mat_near!(svd.S, S, 1e-5);
+    assert_mat_near!(svd.U, U, 1e-5);
+    assert_mat_near!(svd.V, Vt.t(), 1e-5);
 }
