@@ -19,4 +19,3 @@ mod base;
 mod householder;
 mod lu;
 mod qr;
-mod svd;
