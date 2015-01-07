@@ -28,7 +28,6 @@ struct CoorIterator {
 
 impl CoorIterator {
     fn new(rows: uint, cols: uint) -> CoorIterator {
-        //CoorIterator{coor: (uint::MAX, uint::MAX), rows: rows, cols: cols}
         CoorIterator{i: 0, j: 0, rows: rows, cols: cols}
     }
 }
