@@ -32,7 +32,8 @@ impl CoorIterator {
     }
 }
 
-impl Iterator<(uint, uint)> for CoorIterator {
+impl Iterator for CoorIterator {
+    type Item = (uint, uint);
     fn next(&mut self) -> Option<(uint, uint)> {
         if self.j == self.cols { // Fell off the end
             None
@@ -49,11 +50,11 @@ impl Iterator<(uint, uint)> for CoorIterator {
     }
 }
 
-fn sum_sq<I: Iterator<f32>>(iter: I) -> f32 {
+fn sum_sq<I: Iterator>(iter: I) -> f32 {
     iter.map(|x| x * x).sum()
 }
 
-pub trait MatBase : Index<(uint, uint), f32> + fmt::Show + Sized {
+pub trait MatBase : Index<(uint, uint)> + fmt::Show + Sized {
     fn rows(&self) -> uint;
     fn cols(&self) -> uint;
     fn len(&self) -> uint;
@@ -106,7 +107,7 @@ pub trait MatBase : Index<(uint, uint), f32> + fmt::Show + Sized {
     }
 }
 
-pub trait MatBaseMut : MatBase + IndexMut<(uint, uint), f32> + Sized {
+pub trait MatBaseMut : MatBase + IndexMut<(uint, uint)> + Sized {
     //fn t_mut<'a>(&'a mut self) -> Transposed<'a, &mut Self>;
 
     fn block_mut<'a>(&mut self, i0: uint, j0: uint, i1: uint, j1: uint) -> Block<'a, &mut Self> {
@@ -270,13 +271,15 @@ impl Fn<(uint, uint), f32> for Mat {
     }
 }
 
-impl Index<(uint, uint), f32> for Mat {
+impl Index<(uint, uint)> for Mat {
+    type Output = f32;
     fn index(&self, &(i, j): &(uint, uint)) -> &f32 {
         self.data.index(&self.ind(i, j))
     }
 }
 
-impl IndexMut<(uint, uint), f32> for Mat {
+impl IndexMut<(uint, uint)> for Mat {
+    type Output = f32;
     fn index_mut<'a>(&'a mut self, &(i, j): &(uint, uint)) -> &'a mut f32 {
         let idx = self.ind(i, j);
         self.data.index_mut(&idx)
@@ -297,7 +300,8 @@ impl PartialEq for Mat {
 // place on MatBaseMut values.
 
 // lhs + rhs
-impl<LHS:MatBase, RHS:MatBase> Add<RHS, Mat> for LHS {
+impl<LHS:MatBase, RHS:MatBase> Add<RHS> for LHS {
+    type Output = Mat;
     fn add(self, rhs: RHS) -> Mat {
         check_same_size(&self, &rhs, &"Add");
         let mut m = Mat::zero(self.rows(), self.cols());
@@ -309,7 +313,8 @@ impl<LHS:MatBase, RHS:MatBase> Add<RHS, Mat> for LHS {
 }
 
 // lhs + &rhs
-impl<'b, LHS:MatBase, RHS:MatBase> Add<&'b RHS, Mat> for LHS {
+impl<'b, LHS:MatBase, RHS:MatBase> Add<&'b RHS> for LHS {
+    type Output = Mat;
     fn add(self, rhs: &RHS) -> Mat {
         check_same_size(&self, rhs, &"Add");
         let mut m = Mat::zero(self.rows(), self.cols());
@@ -330,7 +335,8 @@ impl<LHS:MatBaseMut, RHS:MatBase> AddAssign<RHS> for LHS {
 }
 
 // lhs - rhs
-impl<LHS:MatBase, RHS:MatBase> Sub<RHS, Mat> for LHS {
+impl<LHS:MatBase, RHS:MatBase> Sub<RHS> for LHS {
+    type Output = Mat;
     fn sub(self, rhs: RHS) -> Mat {
         check_same_size(&self, &rhs, &"Sub");
 
@@ -343,7 +349,8 @@ impl<LHS:MatBase, RHS:MatBase> Sub<RHS, Mat> for LHS {
 }
 
 // lhs - &rhs
-impl<'b, LHS:MatBase, RHS:MatBase> Sub<&'b RHS, Mat> for LHS {
+impl<'b, LHS:MatBase, RHS:MatBase> Sub<&'b RHS> for LHS {
+    type Output = Mat;
     fn sub(self, rhs: &RHS) -> Mat {
         check_same_size(&self, rhs, &"Sub");
 
@@ -365,28 +372,32 @@ impl<LHS:MatBaseMut, RHS:MatBase> SubAssign<RHS> for LHS {
 }
 
 // lhs * rhs
-impl<LHS:MatBase, RHS:MatBase> Mul<RHS, Mat> for LHS {
+impl<LHS:MatBase, RHS:MatBase> Mul<RHS> for LHS {
+    type Output = Mat;
     fn mul(self, rhs:RHS) -> Mat {
         (&self).mul(&rhs)
     }
 }
 
 // lhs * &rhs
-impl<'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS, Mat> for LHS {
+impl<'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS> for LHS {
+    type Output = Mat;
     fn mul(self, rhs:&RHS) -> Mat {
         (&self).mul(rhs)
     }
 }
 
 // &lhs * rhs
-impl<'a, LHS:MatBase + 'a, RHS:MatBase> Mul<RHS, Mat> for &'a LHS {
+impl<'a, LHS:MatBase + 'a, RHS:MatBase> Mul<RHS> for &'a LHS {
+    type Output = Mat;
     fn mul(self, rhs:RHS) -> Mat {
         self.mul(&rhs)
     }
 }
 
 // &lhs * &rhs
-impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS, Mat> for &'a LHS {
+impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS> for &'a LHS {
+    type Output = Mat;
     fn mul(self, rhs: &RHS) -> Mat {
         Mat::from_fn(
             self.rows(), rhs.cols(),
@@ -396,14 +407,16 @@ impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b RHS, Mat> for &'a LHS {
 }
 
 // &lhs * &mut rhs
-impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b mut RHS, Mat> for &'a LHS {
+impl<'a, 'b, LHS:MatBase, RHS:MatBase> Mul<&'b mut RHS> for &'a LHS {
+    type Output = Mat;
     fn mul(self, rhs: &mut RHS) -> Mat {
         self.mul(rhs)
     }
 }
 
 // lhs * scalar
-impl<LHS:MatBase> Mul<f32, Mat> for LHS {
+impl<LHS:MatBase> Mul<f32> for LHS {
+    type Output = Mat;
     fn mul(self, scalar: f32) -> Mat {
         Mat::from_fn(self.rows(), self.cols(),
                      |i, j| self[(i, j)] * scalar)
@@ -449,7 +462,8 @@ transposed_matbase_impl!(MatBaseMut, Transposed<'a, &'a mut T>);
 
 macro_rules! transposed_index_impl {
     ($Base:ident, $Block:ty) => {
-        impl<'a, T:$Base> Index<(uint, uint), f32> for $Block {
+        impl<'a, T:$Base> Index<(uint, uint)> for $Block {
+            type Output = f32;
             //impl<'a, T:MatBase + 'a> Index<(uint, uint), f32> for Transposed<'a, &'a T> {
             fn index<'r>(&'r self, &(i, j): &(uint, uint)) -> &f32 {
                 self.m.index(&(j, i))
@@ -460,7 +474,8 @@ macro_rules! transposed_index_impl {
 transposed_index_impl!(MatBase, Transposed<'a, &'a T>);
 transposed_index_impl!(MatBaseMut, Transposed<'a, &'a mut T>);
 
-impl<'a, T:MatBaseMut + 'a> IndexMut<(uint, uint), f32> for Transposed<'a, &'a mut T> {
+impl<'a, T:MatBaseMut + 'a> IndexMut<(uint, uint)> for Transposed<'a, &'a mut T> {
+    type Output = f32;
     fn index_mut<'r>(&'r mut self, &(i, j): &(uint, uint)) -> &'r mut f32 {
         self.m.index_mut(&(j, i))
     }
@@ -516,7 +531,8 @@ impl<'a, T:MatBaseMut + 'a> Block<'a, &'a mut T> {
 }
 
 
-impl<'a, T:MatBase> Index<uint, f32> for Block<'a, &'a T> {
+impl<'a, T:MatBase> Index<uint> for Block<'a, &'a T> {
+    type Output = f32;
     fn index(&self, &idx: &uint) -> &f32 {
         if self.rows() == 1 {
             self.index(&(0, idx))
@@ -533,7 +549,8 @@ impl<'a, T:MatBase> Index<uint, f32> for Block<'a, &'a T> {
 //impl<'a, T:MatBase> Index<(uint, uint), f32> for Block<'a, &'a T> {
 macro_rules! block_index_impl (
     ($Base:ident, $Block:ty) => (
-        impl<'a, T:$Base> Index<(uint, uint), f32> for $Block {
+        impl<'a, T:$Base> Index<(uint, uint)> for $Block {
+            type Output = f32;
             fn index(&self, &(i, j): &(uint, uint)) -> &f32 {
                 if i >= self.rows() || j >= self.cols() {
                     panic!("Index is outside the range of the block");
@@ -546,7 +563,8 @@ macro_rules! block_index_impl (
 block_index_impl!(MatBase, Block<'a, &'a T>);
 block_index_impl!(MatBaseMut, Block<'a, &'a mut T>);
 
-impl<'a, T:MatBaseMut> IndexMut<(uint, uint), f32> for Block<'a, &'a mut T> {
+impl<'a, T:MatBaseMut> IndexMut<(uint, uint)> for Block<'a, &'a mut T> {
+    type Output = f32;
     fn index_mut(&mut self, &(i, j): &(uint, uint)) -> &mut f32 {
         if i >= self.rows() || j >= self.cols() {
             panic!("Index is outside the range of the block");
@@ -569,7 +587,8 @@ impl<'a, T:MatBase> BlockIterator<'a, &'a T> {
     }
 }
 
-impl<'a, T:MatBase> Iterator<f32> for BlockIterator<'a, &'a T> {
+impl<'a, T:MatBase> Iterator for BlockIterator<'a, &'a T> {
+    type Item = f32;
     fn next(&mut self) -> Option<f32> {
         if self.idx == self.m.rows() * self.m.cols() {
             None
@@ -696,19 +715,22 @@ impl fmt::Show for Permutation {
     }
 }
 
-impl Index<uint, uint> for Permutation {
+impl Index<uint> for Permutation {
+    type Output = uint;
     fn index<'a>(&'a self, _index: &uint) -> &'a uint {
         self.v.index(_index)
     }
 }
 
-impl Mul<Permutation, Permutation> for Permutation {
+impl Mul<Permutation> for Permutation {
+    type Output = Permutation;
     fn mul(self, rhs: Permutation) -> Permutation {
         Permutation{v: range(0, self.len()).map(|i| rhs[self[i]]).collect()}
     }
 }
 
-impl Mul<Mat, Mat> for Permutation {
+impl Mul<Mat> for Permutation {
+    type Output = Mat;
     fn mul(self, rhs: Mat) -> Mat {
         if self.v.len() != rhs.r {
             panic!("Cannot permute matrix of mismatched size");
@@ -723,7 +745,8 @@ impl Mul<Mat, Mat> for Permutation {
     }
 }
 
-impl<T:Clone> Mul<Vec<T>, Vec<T>> for Permutation {
+impl<T:Clone> Mul<Vec<T>> for Permutation {
+    type Output = Vec<T>;
     fn mul(self, rhs: Vec<T>) -> Vec<T> {
         if self.len() != rhs.len() {
             panic!("Permutation len doesn't match Vec len");
