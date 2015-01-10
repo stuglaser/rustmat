@@ -1,4 +1,4 @@
-#![macro_escape]
+#![macro_use]
 
 #[macro_export]
 macro_rules! assert_vec_near(

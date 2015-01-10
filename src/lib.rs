@@ -2,9 +2,6 @@
 #![feature(unboxed_closures)]
 #![allow(non_snake_case)]
 #![allow(dead_code)]  // TODO: Remove eventually
-#![feature(macro_rules)]
-#![feature(associated_types)]
-#![feature(default_type_params)]
 
 // They broke flexible ways of implementing operator traits.
 //

@@ -21,7 +21,7 @@ impl LU {
         for i in range(0, A.c - 1) {
             if U(i, i) == 0.0 {
                 // Finds a non-zero entry
-                let mut nonzero = 0u;
+                let mut nonzero = 0us;
                 for j in range(i + 1, U.r) {
                     if U(j, i) != 0.0 {  // TODO: near, rather than equals
                         nonzero = j;
